@@ -4,20 +4,31 @@
  */
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import type { Diagnostic } from "vscode-languageserver-types";
 import type { LspServerConfig, LspServerInstance, LspManagerState } from "./types.js";
 import { LspClient } from "./lsp-client.js";
 import { languageFromPath } from "./language-config.js";
 
-const FIVE_MINUTES = 60_000; // Check every minute
-const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// ── Local Types ───────────────────────────────────────────────────────────
+
+/** LSP 3.17+ pull model diagnostic result */
+interface DiagnosticPullResult {
+  kind: "full" | "unchanged";
+  resultId?: string;
+  items?: Diagnostic[];
+}
+
+/** Interval for checking idle servers (1 minute) */
+const IDLE_CHECK_INTERVAL_MS = 60_000;
+/** How long a server can be idle before being stopped (5 minutes) */
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+/** Timeout for individual LSP requests (30 seconds) */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export class LspManager {
   private state: LspManagerState;
-  private clientMap: Map<string, LspClient> = new Map();
-  private shutdownHandler: (() => Promise<void>) | null = null;
+  private clientMap = new Map<string, LspClient>();
 
   constructor(cwd: string, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
     this.state = {
@@ -26,11 +37,10 @@ export class LspManager {
       idleCheckInterval: null,
       cwd,
       requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
-      extensionMap: new Map(), // Built lazily
     };
 
     // Start idle checker
-    this.state.idleCheckInterval = setInterval(() => this.checkIdleServers(), FIVE_MINUTES);
+    this.state.idleCheckInterval = setInterval(() => this.checkIdleServers(), IDLE_CHECK_INTERVAL_MS);
   }
 
   /** Get the LSP client for a language, starting the server if needed */
@@ -48,7 +58,7 @@ export class LspManager {
     if (server && server.status !== "stopped") {
       const client = this.clientMap.get(config.language);
       if (client && !client.isAlive()) {
-        this.stopServer(config.language);
+        void this.stopServer(config.language);
         server = undefined;
       }
     }
@@ -58,11 +68,11 @@ export class LspManager {
       server = this.state.servers.get(config.language);
     }
 
-    if (!server || server.status !== "running") {
+    if (server?.status !== "running") {
       return null;
     }
 
-    return this.clientMap.get(config.language) || null;
+    return this.clientMap.get(config.language) ?? null;
   }
 
   /** Start an LSP server for the given config */
@@ -74,7 +84,7 @@ export class LspManager {
 
     // Clean up any stopped instance
     if (existing) {
-      this.stopServer(config.language);
+      await this.stopServer(config.language);
     }
 
     const server: LspServerInstance = {
@@ -144,7 +154,7 @@ export class LspManager {
   private checkIdleServers(): void {
     const now = Date.now();
     for (const [language, server] of this.state.servers) {
-      if (server.status === "running" && now - server.lastActive > this.state.idleTimeoutMs) {
+      if (server.status === "running" && server.pendingRequests.size === 0 && now - server.lastActive > this.state.idleTimeoutMs) {
         this.stopServer(language).catch(() => {
           // Ignore errors during idle cleanup
         });
@@ -152,16 +162,8 @@ export class LspManager {
     }
   }
 
-  /** Mark a server as active (reset idle timer) */
-  touchServer(language: string): void {
-    const server = this.state.servers.get(language);
-    if (server) {
-      server.lastActive = Date.now();
-    }
-  }
-
   /** Get diagnostics for a file */
-  async getDiagnostics(filePath: string, refresh = false): Promise<import("vscode-languageserver-types").Diagnostic[]> {
+  async getDiagnostics(filePath: string, refresh = false): Promise<Diagnostic[]> {
     const config = languageFromPath(filePath);
     if (!config) return [];
 
@@ -182,7 +184,7 @@ export class LspManager {
         // Try pull model first
         const result = await client.requestDiagnostics(uri);
         if (result && typeof result === "object" && "kind" in result && result.kind === "full") {
-          const diags = (result as any).items || [];
+          const diags = (result as DiagnosticPullResult).items ?? [];
           server.diagnostics.set(uri, diags);
           return diags;
         }
@@ -191,21 +193,21 @@ export class LspManager {
       }
     }
 
-    return server.diagnostics.get(uri) || [];
+    return server.diagnostics.get(uri) ?? [];
   }
 
   /** Handle a notification from the LSP server */
   private handleNotification(language: string, method: string, params: unknown): void {
     if (method === "textDocument/publishDiagnostics") {
-      const diagParams = params as { uri: string; diagnostics: import("vscode-languageserver-types").Diagnostic[] };
-      if (diagParams?.uri) {
-        this.handleDiagnosticsNotification(language, diagParams.uri, diagParams.diagnostics || []);
+      const diagParams = params as { uri: string; diagnostics?: Diagnostic[] };
+      if (diagParams.uri) {
+        this.handleDiagnosticsNotification(language, diagParams.uri, diagParams.diagnostics ?? []);
       }
     }
   }
 
   /** Handle a diagnostics notification from the server */
-  handleDiagnosticsNotification(language: string, uri: string, diagnostics: import("vscode-languageserver-types").Diagnostic[]): void {
+  handleDiagnosticsNotification(language: string, uri: string, diagnostics: Diagnostic[]): void {
     const server = this.state.servers.get(language);
     if (server) {
       server.diagnostics.set(uri, diagnostics);
@@ -271,18 +273,9 @@ export class LspManager {
     return result;
   }
 
-  /** Get the manager state */
-  getState(): LspManagerState {
-    return this.state;
-  }
-
   /** Get the client map (for direct access by tools) */
   getClientMap(): Map<string, LspClient> {
     return this.clientMap;
   }
 
-  /** Register a shutdown handler */
-  onShutdown(handler: () => Promise<void>): void {
-    this.shutdownHandler = handler;
-  }
 }

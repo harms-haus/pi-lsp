@@ -385,25 +385,9 @@ export const LANGUAGE_SERVERS: LspServerConfig[] = [
 
 // ── Helper functions ───────────────────────────────────────────────────────
 
-/** Build a map from file extension (with dot) to language name */
-export function buildExtensionMap(): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const cfg of LANGUAGE_SERVERS) {
-    for (const ext of cfg.extensions) {
-      map.set(ext, cfg.language);
-    }
-  }
-  return map;
-}
-
 /** Find the LSP config for a given file extension */
 export function getConfigForExtension(ext: string): LspServerConfig | undefined {
   return LANGUAGE_SERVERS.find((cfg) => cfg.extensions.includes(ext));
-}
-
-/** Find the LSP config by language name */
-export function getConfigByLanguage(language: string): LspServerConfig | undefined {
-  return LANGUAGE_SERVERS.find((cfg) => cfg.language === language);
 }
 
 /** Determine language from a file path */
@@ -428,17 +412,3 @@ export async function isServerInstalled(config: LspServerConfig): Promise<boolea
   }
 }
 
-/** Install a language server */
-export async function installServer(config: LspServerConfig): Promise<{ success: boolean; output: string }> {
-  return new Promise<{ success: boolean; output: string }>((resolve) => {
-    const { exec } = require("node:child_process");
-    exec(config.installCommand, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      const output = stdout + stderr;
-      if (error) {
-        resolve({ success: false, output });
-      } else {
-        resolve({ success: true, output });
-      }
-    });
-  });
-}

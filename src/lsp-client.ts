@@ -4,7 +4,31 @@
  */
 
 import * as child_process from "node:child_process";
+import type {
+  Location,
+  Range,
+  SymbolInformation,
+  WorkspaceSymbol,
+  CallHierarchyItem,
+  CallHierarchyIncomingCall,
+  CallHierarchyOutgoingCall,
+  WorkspaceEdit,
+  Diagnostic,
+} from "vscode-languageserver-types";
 import type { LspServerConfig, LspServerInstance } from "./types.js";
+
+// ── Constants ─────────────────────────────────────────────────────────────
+
+/** Default timeout for LSP requests (30 seconds) */
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/** Maximum message size to prevent memory exhaustion (10 MB) */
+const MAX_MESSAGE_SIZE = 10 * 1024 * 1024; // 10 MB
+/** Timeout for the initialize handshake (60 seconds) */
+const INITIALIZE_TIMEOUT_MS = 60_000;
+/** Timeout for graceful shutdown (5 seconds) */
+const SHUTDOWN_TIMEOUT_MS = 5_000;
+/** Timeout before force-killing after SIGTERM (3 seconds) */
+const FORCE_KILL_DELAY_MS = 3_000;
 
 // ── JSON-RPC Message Types ─────────────────────────────────────────────────
 
@@ -185,6 +209,11 @@ export class LspClient {
         }
 
         this.contentLength = parseInt(match[1], 10);
+        if (this.contentLength > MAX_MESSAGE_SIZE || this.contentLength < 0) {
+          this.buffer = "";
+          this.contentLength = -1;
+          return;
+        }
         this.buffer = this.buffer.slice(headerEnd + 4);
       }
 
@@ -236,7 +265,7 @@ export class LspClient {
   }
 
   /** Send a request and wait for response */
-  request<T = unknown>(method: string, params: unknown, timeoutMs = 30000): Promise<T> {
+  request<T = unknown>(method: string, params: unknown, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): Promise<T> {
     const id = this.server.nextId++;
     this.server.lastActive = Date.now();
 
@@ -246,8 +275,14 @@ export class LspClient {
         reject(new Error(`LSP request "${method}" timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
-      this.server.pendingRequests.set(id, { resolve, reject, timer });
-      this.sendMessage({ jsonrpc: "2.0", id, method, params });
+      this.server.pendingRequests.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
+      try {
+        this.sendMessage({ jsonrpc: "2.0", id, method, params });
+      } catch (err) {
+        clearTimeout(timer);
+        this.server.pendingRequests.delete(id);
+        reject(err);
+      }
     });
   }
 
@@ -278,7 +313,7 @@ export class LspClient {
       },
     };
 
-    const result = await this.request<Record<string, unknown>>("initialize", params, 60000);
+    const result = await this.request<Record<string, unknown>>("initialize", params, INITIALIZE_TIMEOUT_MS);
     this.server.capabilities = result;
     this.server.initialized = false;
 
@@ -309,61 +344,61 @@ export class LspClient {
   }
 
   /** Request diagnostics via pull model (LSP 3.17+) */
-  async requestDiagnostics(uri: string): Promise<unknown> {
-    return this.request("textDocument/diagnostic", { textDocument: { uri } }, 30000);
+  async requestDiagnostics(uri: string): Promise<Diagnostic[] | null> {
+    return this.request<Diagnostic[] | null>("textDocument/diagnostic", { textDocument: { uri } }, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Go to definition */
-  async gotoDefinition(uri: string, line: number, col: number): Promise<unknown> {
+  async gotoDefinition(uri: string, line: number, col: number): Promise<Location | Location[] | null> {
     const params: TextDocumentPositionParams = {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request("textDocument/definition", params, 15000);
+    return this.request<Location | Location[] | null>("textDocument/definition", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Find references */
-  async findReferences(uri: string, line: number, col: number): Promise<unknown> {
+  async findReferences(uri: string, line: number, col: number): Promise<Location[] | null> {
     const params: ReferenceParams = {
       textDocument: { uri },
       position: { line, character: col },
       context: { includeDeclaration: true },
     };
-    return this.request("textDocument/references", params, 15000);
+    return this.request<Location[] | null>("textDocument/references", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Prepare rename (returns valid rename range and placeholder) */
-  async prepareRename(uri: string, line: number, col: number): Promise<unknown> {
+  async prepareRename(uri: string, line: number, col: number): Promise<Range | { range: Range; placeholder: string } | null> {
     const params: TextDocumentPositionParams = {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request("textDocument/prepareRename", params, 10000);
+    return this.request<Range | { range: Range; placeholder: string } | null>("textDocument/prepareRename", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Rename symbol */
-  async rename(uri: string, line: number, col: number, newName: string): Promise<unknown> {
+  async rename(uri: string, line: number, col: number, newName: string): Promise<WorkspaceEdit | null> {
     const params: RenameParams = {
       textDocument: { uri },
       position: { line, character: col },
       newName,
     };
-    return this.request("textDocument/rename", params, 15000);
+    return this.request<WorkspaceEdit | null>("textDocument/rename", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Workspace symbol search */
-  async workspaceSymbol(query: string): Promise<unknown> {
+  async workspaceSymbol(query: string): Promise<SymbolInformation[] | WorkspaceSymbol[] | null> {
     const params: WorkspaceSymbolParams = { query };
-    return this.request("workspace/symbol", params, 15000);
+    return this.request<SymbolInformation[] | WorkspaceSymbol[] | null>("workspace/symbol", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Prepare call hierarchy */
-  async prepareCallHierarchy(uri: string, line: number, col: number): Promise<unknown> {
+  async prepareCallHierarchy(uri: string, line: number, col: number): Promise<CallHierarchyItem[] | null> {
     const params: PrepareCallHierarchyParams = {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request("textDocument/prepareCallHierarchy", params, 10000);
+    return this.request<CallHierarchyItem[] | null>("textDocument/prepareCallHierarchy", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Get incoming calls */
@@ -374,9 +409,9 @@ export class LspClient {
     range: { start: { line: number; character: number }; end: { line: number; character: number } };
     selectionRange: { start: { line: number; character: number }; end: { line: number; character: number } };
     data?: unknown;
-  }): Promise<unknown> {
+  }): Promise<CallHierarchyIncomingCall[] | null> {
     const params: CallHierarchyIncomingCallsParams = { item };
-    return this.request("callHierarchy/incomingCalls", params, 15000);
+    return this.request<CallHierarchyIncomingCall[] | null>("callHierarchy/incomingCalls", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Get outgoing calls */
@@ -387,9 +422,9 @@ export class LspClient {
     range: { start: { line: number; character: number }; end: { line: number; character: number } };
     selectionRange: { start: { line: number; character: number }; end: { line: number; character: number } };
     data?: unknown;
-  }): Promise<unknown> {
+  }): Promise<CallHierarchyOutgoingCall[] | null> {
     const params: CallHierarchyOutgoingCallsParams = { item };
-    return this.request("callHierarchy/outgoingCalls", params, 15000);
+    return this.request<CallHierarchyOutgoingCall[] | null>("callHierarchy/outgoingCalls", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Shutdown the LSP server gracefully */
@@ -398,17 +433,18 @@ export class LspClient {
     this.server.status = "stopping";
 
     try {
-      await this.request("shutdown", {}, 5000);
+      await this.request("shutdown", {}, SHUTDOWN_TIMEOUT_MS);
       this.notify("exit", {});
     } catch {
       // Force kill if graceful shutdown fails
-      if (this.process) {
-        this.process.kill("SIGTERM");
+      const proc = this.process;
+      if (proc) {
+        proc.kill("SIGTERM");
         setTimeout(() => {
-          if (this.process && !this.process.killed) {
-            this.process.kill("SIGKILL");
+          if (!proc.killed) {
+            proc.kill("SIGKILL");
           }
-        }, 3000);
+        }, FORCE_KILL_DELAY_MS);
       }
     }
 

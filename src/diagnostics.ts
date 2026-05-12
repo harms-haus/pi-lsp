@@ -9,6 +9,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "./lsp-manager.js";
 import { languageFromPath } from "./language-config.js";
 
+// ── Constants ─────────────────────────────────────────────────────────────
+
+/** Delay before triggering diagnostics after file change (ms) */
+const DIAGNOSTICS_SETTLE_DELAY_MS = 500;
+/** Wait time for diagnostics to arrive from server (ms) */
+const DIAGNOSTICS_WAIT_MS = 1000;
+
 /**
  * Register event handlers to auto-run diagnostics after file edits/writes
  */
@@ -24,9 +31,9 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, manager: LspManager): 
       let filePath: string | undefined;
 
       if (toolName === "write") {
-        filePath = (event.input as any).path;
+        filePath = (event.input as { path?: string }).path;
       } else if (toolName === "edit") {
-        filePath = (event.input as any).path;
+        filePath = (event.input as { path?: string }).path;
       }
 
       if (!filePath) return;
@@ -44,7 +51,7 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, manager: LspManager): 
     modifiedFiles.clear();
 
     // Small delay to let LSP server process the changes
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, DIAGNOSTICS_SETTLE_DELAY_MS));
 
     // Run diagnostics for each modified file
     for (const filePath of filesToCheck) {
@@ -56,7 +63,7 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, manager: LspManager): 
         await manager.onFileChanged(filePath);
 
         // Wait briefly for diagnostics to arrive, then check
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, DIAGNOSTICS_WAIT_MS));
 
         const diagnostics = await manager.getDiagnostics(filePath, true);
         if (diagnostics.length > 0 && ctx.hasUI) {
@@ -77,38 +84,4 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, manager: LspManager): 
   });
 }
 
-/**
- * Format a diagnostics notification for display
- * Called when the LSP server sends textDocument/publishDiagnostics
- */
-export function formatDiagnosticsNotification(
-  uri: string,
-  diagnostics: import("vscode-languageserver-types").Diagnostic[],
-): string {
-  if (diagnostics.length === 0) return "";
 
-  const filePath = decodeURIComponent(uri.replace(/^file:\/\//, ""));
-  const fileName = path.basename(filePath);
-
-  const errors = diagnostics.filter((d) => d.severity === 1);
-  const warnings = diagnostics.filter((d) => d.severity === 2);
-  const infos = diagnostics.filter((d) => d.severity === 3);
-  const hints = diagnostics.filter((d) => d.severity === 4);
-
-  const parts: string[] = [];
-
-  if (errors.length > 0) {
-    parts.push(`✗ ${fileName}: ${errors.length} error(s)`);
-  }
-  if (warnings.length > 0) {
-    parts.push(`⚠ ${fileName}: ${warnings.length} warning(s)`);
-  }
-  if (infos.length > 0) {
-    parts.push(`ℹ ${fileName}: ${infos.length} info(s)`);
-  }
-  if (hints.length > 0) {
-    parts.push(`💡 ${fileName}: ${hints.length} hint(s)`);
-  }
-
-  return parts.join(" | ");
-}

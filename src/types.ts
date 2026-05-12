@@ -4,15 +4,6 @@
 
 import type {
   Diagnostic,
-  Location,
-  Position,
-  Range,
-  SymbolInformation,
-  WorkspaceSymbol,
-  CallHierarchyItem,
-  CallHierarchyIncomingCall,
-  CallHierarchyOutgoingCall,
-  WorkspaceEdit,
 } from "vscode-languageserver-types";
 
 // ── LSP Server Config ──────────────────────────────────────────────────────
@@ -48,7 +39,7 @@ export interface LspServerInstance {
   /** JSON-RPC message ID counter */
   nextId: number;
   /** Pending requests: id → resolve/reject */
-  pendingRequests: Map<number, { resolve: (value: any) => void; reject: (err: Error) => void; timer?: NodeJS.Timeout }>;
+  pendingRequests: Map<number, { resolve: (value: unknown) => void; reject: (err: Error) => void; timer?: NodeJS.Timeout }>;
   /** Last activity timestamp (ms) */
   lastActive: number;
   /** File versions for didChange tracking: uri → version */
@@ -78,60 +69,6 @@ export interface LspManagerState {
   cwd: string;
   /** Request timeout in ms */
   requestTimeoutMs: number;
-  /** Map of extension → language for quick lookup */
-  extensionMap: Map<string, string>;
-}
-
-// ── Tool Result Types ───────────────────────────────────────────────────────
-
-export interface DiagnosticsResult {
-  uri: string;
-  file: string;
-  diagnostics: Diagnostic[];
-  errorCount: number;
-  warningCount: number;
-  infoCount: number;
-}
-
-export interface FindReferencesResult {
-  uri: string;
-  position: Position;
-  references: Location[];
-  count: number;
-}
-
-export interface GotoDefinitionResult {
-  uri: string;
-  position: Position;
-  definitions: Location[];
-  count: number;
-}
-
-export interface RefactorSymbolResult {
-  uri: string;
-  position: Position;
-  oldName: string;
-  newName: string;
-  /** A unified diff patch that can be applied with `patch` or `edit` */
-  patch: string;
-  /** The raw WorkspaceEdit from the LSP server */
-  workspaceEdit: WorkspaceEdit;
-}
-
-export interface FindSymbolResult {
-  query: string;
-  symbols: (SymbolInformation | WorkspaceSymbol)[];
-  count: number;
-}
-
-export interface CallHierarchyResult {
-  uri: string;
-  position: Position;
-  functionName: string;
-  incomingCalls: CallHierarchyIncomingCall[];
-  outgoingCalls: CallHierarchyOutgoingCall[];
-  incomingCount: number;
-  outgoingCount: number;
 }
 
 // ── Tool Parameters (exported for use in extension) ─────────────────────────
