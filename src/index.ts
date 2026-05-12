@@ -318,13 +318,40 @@ export default function (pi: ExtensionAPI) {
 
         // Try to get the current symbol name
         let oldName = "(unknown)";
+        let renameRange: any = null;
         try {
           const prepareResult = await client.prepareRename(uri, params.line - 1, params.column - 1) as any;
-          if (prepareResult && typeof prepareResult === "object" && "placeholder" in prepareResult) {
-            oldName = prepareResult.placeholder;
+          if (prepareResult && typeof prepareResult === "object") {
+            if ("placeholder" in prepareResult) {
+              oldName = prepareResult.placeholder;
+              renameRange = prepareResult.range;
+            } else if ("start" in prepareResult && "end" in prepareResult) {
+              // prepareRename returned just a Range
+              renameRange = prepareResult;
+            }
           }
         } catch {
-          // Fallback: read from file
+          // prepareRename not supported
+        }
+
+        // If we got a range but no placeholder, extract the text from the file
+        if (oldName === "(unknown)" && renameRange) {
+          try {
+            const { readFileSync } = await import("node:fs");
+            const content = readFileSync(filePath, "utf-8");
+            const lines = content.split("\n");
+            const startLine = lines[renameRange.start.line] || "";
+            const endLine = lines[renameRange.end.line] || "";
+            if (renameRange.start.line === renameRange.end.line) {
+              oldName = startLine.slice(renameRange.start.character, renameRange.end.character);
+            } else {
+              oldName = startLine.slice(renameRange.start.character) + "\n" + endLine.slice(0, renameRange.end.character);
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Final fallback: extract word at cursor position
+        if (oldName === "(unknown)") {
           try {
             const { readFileSync } = await import("node:fs");
             const content = readFileSync(filePath, "utf-8");
@@ -339,12 +366,39 @@ export default function (pi: ExtensionAPI) {
 
         const workspaceEdit = (await client.rename(uri, params.line - 1, params.column - 1, params.newName)) as any;
 
-        // Build patch
+        // Build patch — handle both `changes` and `documentChanges` formats
         const patchParts: string[] = [];
+        let fileCount = 0;
+
+        // Handle documentChanges format (LSP 3.17+)
+        const docChanges = workspaceEdit?.documentChanges || [];
+        for (const dc of docChanges) {
+          if (dc.textDocument && dc.edits && Array.isArray(dc.edits)) {
+            const changeUri = dc.textDocument.uri;
+            const changePath = decodeURIComponent(changeUri.replace(/^file:\/\//, ""));
+            const sorted = [...dc.edits].sort((a, b) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character);
+            fileCount++;
+            try {
+              const { readFileSync } = await import("node:fs");
+              const original = readFileSync(changePath, "utf-8");
+              const modified = applyEdits(original, sorted);
+              patchParts.push(buildDiff(changePath, original, modified));
+            } catch {
+              const newText = sorted.map((e: any) => e.newText).join("");
+              const lineCount = newText ? newText.split("\n").length : 0;
+              patchParts.push(`--- /dev/null\n+++ ${changePath}\n@@ -0,0 +1,${lineCount} @@\n${newText.split("\n").map((l: string) => "+" + l).join("\n")}`);
+            }
+          }
+        }
+
+        // Handle legacy changes format
         const changes = workspaceEdit?.changes || {};
         for (const [changeUri, edits] of Object.entries(changes) as [string, any[]][]) {
+          // Skip if already processed via documentChanges
+          if (fileCount > 0 && docChanges.some((dc: any) => dc.textDocument?.uri === changeUri)) continue;
           const changePath = decodeURIComponent(changeUri.replace(/^file:\/\//, ""));
           const sorted = [...edits].sort((a, b) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character);
+          fileCount++;
           try {
             const { readFileSync } = await import("node:fs");
             const original = readFileSync(changePath, "utf-8");
@@ -352,12 +406,12 @@ export default function (pi: ExtensionAPI) {
             patchParts.push(buildDiff(changePath, original, modified));
           } catch {
             const newText = sorted.map((e: any) => e.newText).join("");
-            patchParts.push(`--- /dev/null\n+++ ${changePath}\n@@ -0,0 +1,${newText.split("\n").length} @@\n${newText.split("\n").map((l: string) => "+" + l).join("\n")}`);
+            const lineCount = newText ? newText.split("\n").length : 0;
+            patchParts.push(`--- /dev/null\n+++ ${changePath}\n@@ -0,0 +1,${lineCount} @@\n${newText.split("\n").map((l: string) => "+" + l).join("\n")}`);
           }
         }
 
         const patch = patchParts.join("\n\n") || "No changes generated.";
-        const fileCount = Object.keys(changes).length;
 
         return {
           content: [{
