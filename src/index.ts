@@ -26,6 +26,7 @@ export default function (pi: ExtensionAPI) {
   let manager: LspManager | null = null;
   let cwd = process.cwd();
   let currentCtx: any;
+  let lastLspStatus: string | undefined;
 
   function getManager(): LspManager | null {
     return manager;
@@ -62,6 +63,7 @@ export default function (pi: ExtensionAPI) {
       currentCtx.ui.setStatus("pi-lsp", undefined);
     }
     currentCtx = undefined;
+    lastLspStatus = undefined;
   });
 
   // ── Register Tools ─────────────────────────────────────────────────────
@@ -77,21 +79,22 @@ export default function (pi: ExtensionAPI) {
 
   function publishLspStatus(): void {
     if (!currentCtx?.hasUI) return;
-
     if (!manager) {
-      currentCtx.ui.setStatus("pi-lsp", undefined);
+      if (lastLspStatus !== undefined) {
+        currentCtx.ui.setStatus("pi-lsp", undefined);
+        lastLspStatus = undefined;
+      }
       return;
     }
-
-    const status = manager.getStatus();
-    const runningLanguages = status
-      .filter((s) => s.status === "running")
-      .map((s) => s.language);
-
-    if (runningLanguages.length === 0) {
-      currentCtx.ui.setStatus("pi-lsp", undefined);
-    } else {
-      currentCtx.ui.setStatus("pi-lsp", runningLanguages.join(", "));
+    const runningLanguages = manager.getStatus()
+        .filter((s: { status: string }) => s.status === "running")
+        .map((s: { language: string }) => s.language);
+    const newStatus = runningLanguages.length > 0
+        ? runningLanguages.join(", ")
+        : undefined;
+    if (newStatus !== lastLspStatus) {
+      lastLspStatus = newStatus;
+      currentCtx.ui.setStatus("pi-lsp", newStatus);
     }
   }
 
