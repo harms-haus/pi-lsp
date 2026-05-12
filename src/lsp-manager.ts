@@ -10,7 +10,7 @@ import type { LspServerConfig, LspServerInstance, LspManagerState } from "./type
 import { LspClient } from "./lsp-client.js";
 import { languageFromPath } from "./language-config.js";
 
-const IDLE_CHECK_INTERVAL_MS = 60_000; // Check every minute
+const FIVE_MINUTES = 60_000; // Check every minute
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -30,7 +30,7 @@ export class LspManager {
     };
 
     // Start idle checker
-    this.state.idleCheckInterval = setInterval(() => this.checkIdleServers(), IDLE_CHECK_INTERVAL_MS);
+    this.state.idleCheckInterval = setInterval(() => this.checkIdleServers(), FIVE_MINUTES);
   }
 
   /** Get the LSP client for a language, starting the server if needed */
