@@ -506,21 +506,35 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text", text: "Please provide a symbol query to search for." }], details: {}, isError: true };
       }
 
-      // Find a running server or start one based on workspace files
+      // Prefer to use the TypeScript server since it's the most commonly available
+      // and workspace/symbol needs proper project setup (tsconfig.json)
       let client: LspClient | null = null;
-      let config: any = null;
+      let config: typeof LANGUAGE_SERVERS[number] | undefined = null;
 
-      for (const serverConfig of LANGUAGE_SERVERS) {
-        const c = manager!.getClientMap().get(serverConfig.language);
-        if (c) {
-          client = c;
-          config = serverConfig;
-          break;
+      // Check if TypeScript server is running (it has the best workspace symbol support)
+      const tsConfig = LANGUAGE_SERVERS.find((c) => c.language === "typescript");
+      if (tsConfig) {
+        const installed = await isServerInstalled(tsConfig);
+        if (installed) {
+          client = await manager!.getClientForConfig(tsConfig);
+          config = tsConfig;
         }
       }
 
+      // Fall back to any running server
       if (!client) {
-        // Try to find a source file to determine language
+        for (const serverConfig of LANGUAGE_SERVERS) {
+          const c = manager!.getClientMap().get(serverConfig.language);
+          if (c) {
+            client = c;
+            config = serverConfig;
+            break;
+          }
+        }
+      }
+
+      // Start a new server based on workspace files
+      if (!client) {
         const { execSync } = await import("node:child_process");
         try {
           const files = execSync(`find "${cwd}" -maxdepth 3 -type f \\( -name "*.ts" -o -name "*.py" -o -name "*.js" -o -name "*.rs" -o -name "*.go" -o -name "*.java" \\) 2>/dev/null | head -1`, { encoding: "utf-8", timeout: 5000 }).trim();
