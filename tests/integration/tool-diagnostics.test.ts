@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockExtensionApi, getTool } from "../helpers/mock-extension-api.js";
 import { registerDiagnosticsTool } from "../../src/tools/diagnostics.js";
 
-describe("lsp-diagnostics tool integration", () => {
+describe("lsp_diagnostics tool integration", () => {
   let pi: ReturnType<typeof createMockExtensionApi>;
   let mockManager: Partial<import("../../src/lsp-manager.js").LspManager>;
 
@@ -19,13 +19,13 @@ describe("lsp-diagnostics tool integration", () => {
   });
 
   it("should register tool with correct name", () => {
-    const tool = getTool(pi, "lsp-diagnostics");
+    const tool = getTool(pi, "lsp_diagnostics");
     expect(tool).toBeDefined();
-    expect(tool!.name).toBe("lsp-diagnostics");
+    expect(tool!.name).toBe("lsp_diagnostics");
   });
 
   it("should return error for unsupported file type", async () => {
-    const tool = getTool(pi, "lsp-diagnostics")!;
+    const tool = getTool(pi, "lsp_diagnostics")!;
     const result = await tool.execute(
       "call-1",
       { file: "data.csv" },
@@ -43,7 +43,7 @@ describe("lsp-diagnostics tool integration", () => {
   });
 
   it("should have correct label and description", () => {
-    const tool = getTool(pi, "lsp-diagnostics")!;
+    const tool = getTool(pi, "lsp_diagnostics")!;
     expect(tool!.label).toBe("LSP Diagnostics");
     expect(tool!.description).toContain("Run LSP diagnostics");
   });

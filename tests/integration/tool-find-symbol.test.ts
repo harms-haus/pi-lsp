@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockExtensionApi, getTool } from "../helpers/mock-extension-api.js";
 import { registerFindSymbolTool } from "../../src/tools/find-symbol.js";
 
-describe("lsp-find-symbol tool integration", () => {
+describe("lsp_find_symbol tool integration", () => {
   let pi: ReturnType<typeof createMockExtensionApi>;
   let mockManager: any;
 
@@ -18,13 +18,13 @@ describe("lsp-find-symbol tool integration", () => {
   });
 
   it("should register tool with correct name", () => {
-    const tool = getTool(pi, "lsp-find-symbol");
+    const tool = getTool(pi, "lsp_find_symbol");
     expect(tool).toBeDefined();
-    expect(tool.name).toBe("lsp-find-symbol");
+    expect(tool.name).toBe("lsp_find_symbol");
   });
 
   it("should return error when no query provided", async () => {
-    const tool = getTool(pi, "lsp-find-symbol");
+    const tool = getTool(pi, "lsp_find_symbol");
     const result = await tool.execute(
       "call-1",
       { query: "" },
