@@ -28,6 +28,20 @@ cp -r pi-lsp .pi/extensions/pi-lsp
 cd .pi/extensions/pi-lsp && npm install
 ```
 
+## Development
+
+```bash
+npm install          # Install dependencies
+npm run lint           # Lint source code
+npm run lint:fix       # Auto-fix lint issues
+npm run typecheck      # Type-check without emitting
+npm test               # Run test suite (96 tests)
+npm run test:coverage  # Run tests with coverage report
+npm run test:watch     # Run tests in watch mode
+```
+
+No build step required — pi loads TypeScript source directly.
+
 ## Tools
 
 ### lsp_diagnostics
@@ -156,6 +170,8 @@ Show the status of all running LSP servers.
 | R | .r, .R | languageserver | `R -e 'install.packages("languageserver")'` |
 | Bash/Shell | .sh, .bash | bash-language-server | `npm install -g bash-language-server` |
 
+> **Note:** Bare filenames without a dot prefix (e.g. `Dockerfile`) are not matched by the current extension detection logic — only `.dockerfile` files are detected automatically.
+
 ## Architecture
 
 ```
@@ -183,6 +199,15 @@ Show the status of all running LSP servers.
 │  diagnostics.ts                                         │
 │  └── Auto-diagnostics hook on write/edit tools          │
 ├─────────────────────────────────────────────────────────┤
+│  src/tools/                                             │
+│  ├── shared.ts             # Shared tool utilities      │
+│  ├── diagnostics.ts        # lsp_diagnostics tool       │
+│  ├── find-references.ts    # lsp_find_references tool   │
+│  ├── refactor-symbol.ts    # lsp_refactor_symbol tool   │
+│  ├── goto-definition.ts    # lsp_goto_definition tool   │
+│  ├── find-symbol.ts        # lsp_find_symbol tool       │
+│  └── call-hierarchy.ts     # lsp_call_hierarchy tool    │
+├─────────────────────────────────────────────────────────┤
 │  types.ts                                               │
 │  └── Shared type definitions                            │
 └─────────────────────────────────────────────────────────┘
@@ -195,3 +220,25 @@ Show the status of all running LSP servers.
 3. **Persistent**: Servers stay alive across tool calls with a 5-minute idle timeout
 4. **Auto-restart**: If a server crashes, it restarts on the next tool invocation
 5. **Graceful shutdown**: All servers are shut down when pi exits (`session_shutdown`)
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | Deep system architecture: modules, data flow, state machines |
+| [Development](docs/development.md) | Setup, commands, project structure |
+| [Tool Implementation](docs/tools-guide.md) | How tools work, preamble pattern, per-tool details |
+| [Auto-Diagnostics](docs/auto-diagnostics.md) | Event-driven diagnostics after file edits |
+| [Language Support](docs/language-support.md) | Adding new language servers |
+| [Testing](docs/testing.md) | Test strategy, patterns, fixtures |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
+
+## Contributing
+
+1. Fork or clone the repository
+2. Create a feature branch
+3. Make changes with tests
+4. Run `npm run lint && npm run typecheck && npm test`
+5. Submit a pull request
+
+See [docs/development.md](docs/development.md) for detailed setup instructions.
