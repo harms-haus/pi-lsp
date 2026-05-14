@@ -61,9 +61,11 @@ export default function (pi: ExtensionAPI) {
     }
     if (currentCtx?.hasUI) {
       currentCtx.ui.setStatus("pi-lsp", undefined);
+      currentCtx.ui.setStatus("pi-lint", undefined);
     }
     currentCtx = undefined;
     lastLspStatus = undefined;
+
   });
 
   // ── Register Tools ─────────────────────────────────────────────────────
