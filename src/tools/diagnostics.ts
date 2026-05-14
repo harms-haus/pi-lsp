@@ -1,5 +1,5 @@
 /**
- * lsp-diagnostics tool: Run LSP diagnostics on a file
+ * lsp_diagnostics tool: Run LSP diagnostics on a file
  */
 
 import { Type } from "typebox";
@@ -22,12 +22,12 @@ export function registerDiagnosticsTool(
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp-diagnostics",
+    name: "lsp_diagnostics",
     label: "LSP Diagnostics",
     description: "Run LSP diagnostics on a file. Shows errors, warnings, and info messages. Use refresh=true to force a re-check.",
     promptSnippet: "Check a file for LSP diagnostics (errors, warnings)",
     promptGuidelines: [
-      "Use lsp-diagnostics to check a specific file for compilation errors and warnings.",
+      "Use lsp_diagnostics to check a specific file for compilation errors and warnings.",
       "Set refresh=true to force the LSP server to re-analyze the file.",
     ],
     parameters: Schema,

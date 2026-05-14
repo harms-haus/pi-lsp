@@ -1,6 +1,6 @@
 ---
 name: lsp-tools
-description: Guidance for using the 6 LSP tools (lsp-diagnostics, lsp-find-references, lsp-refactor-symbol, lsp-goto-definition, lsp-find-symbol, lsp-call-hierarchy) to analyze, navigate, and refactor code with language server intelligence. Use when working with code in any of the 33+ supported languages (TypeScript, Python, Rust, Go, C/C++, Java, and more).
+description: Guidance for using the 6 LSP tools (lsp_diagnostics, lsp_find_references, lsp_refactor_symbol, lsp_goto_definition, lsp_find_symbol, lsp_call_hierarchy) to analyze, navigate, and refactor code with language server intelligence. Use when working with code in any of the 33+ supported languages (TypeScript, Python, Rust, Go, C/C++, Java, and more).
 ---
 
 # LSP Tools
@@ -13,16 +13,16 @@ Use LSP tools **instead of** `grep`/`rg`/`find` when you need **semantic underst
 
 | Instead of... | Use... | Because... |
 |---|---|---|
-| `grep -rn "symbolName"` | `lsp-find-references` | Finds only actual references, not comments/strings/false matches |
-| Guessing where something is defined | `lsp-goto-definition` | Goes to the exact definition, even across files |
-| Manual find-and-replace | `lsp-refactor-symbol` | Renames everywhere the symbol is used, safely |
-| `grep` for a class/function | `lsp-find-symbol` | Fuzzy search across the whole workspace by name and kind |
-| Manual error checking | `lsp-diagnostics` | Gets compiler-accurate errors and warnings |
-| Guessing call relationships | `lsp-call-hierarchy` | Maps actual caller/callee relationships |
+| `grep -rn "symbolName"` | `lsp_find_references` | Finds only actual references, not comments/strings/false matches |
+| Guessing where something is defined | `lsp_goto_definition` | Goes to the exact definition, even across files |
+| Manual find-and-replace | `lsp_refactor_symbol` | Renames everywhere the symbol is used, safely |
+| `grep` for a class/function | `lsp_find_symbol` | Fuzzy search across the whole workspace by name and kind |
+| Manual error checking | `lsp_diagnostics` | Gets compiler-accurate errors and warnings |
+| Guessing call relationships | `lsp_call_hierarchy` | Maps actual caller/callee relationships |
 
 ## Tool Reference
 
-### lsp-diagnostics — Check for errors and warnings
+### lsp_diagnostics — Check for errors and warnings
 
 **When:** After editing files, when code behaves unexpectedly, or to verify code quality.
 
@@ -32,8 +32,8 @@ Use LSP tools **instead of** `grep`/`rg`/`find` when you need **semantic underst
 
 **Examples:**
 ```
-lsp-diagnostics(file="src/index.ts")
-lsp-diagnostics(file="src/index.ts", refresh=true)
+lsp_diagnostics(file="src/index.ts")
+lsp_diagnostics(file="src/index.ts", refresh=true)
 ```
 
 **Workflow tips:**
@@ -43,7 +43,7 @@ lsp-diagnostics(file="src/index.ts", refresh=true)
 
 ---
 
-### lsp-goto-definition — Find where a symbol is defined
+### lsp_goto_definition — Find where a symbol is defined
 
 **When:** You need to read the implementation of a function, class, variable, or type. You see a symbol used somewhere and want to jump to its definition.
 
@@ -54,7 +54,7 @@ lsp-diagnostics(file="src/index.ts", refresh=true)
 
 **Examples:**
 ```
-lsp-goto-definition(file="src/app.ts", line=42, column=10)
+lsp_goto_definition(file="src/app.ts", line=42, column=10)
 ```
 
 **Workflow tips:**
@@ -65,7 +65,7 @@ lsp-goto-definition(file="src/app.ts", line=42, column=10)
 
 ---
 
-### lsp-find-references — Find all usages of a symbol
+### lsp_find_references — Find all usages of a symbol
 
 **When:** You need to know every place a function, class, variable, or type is used — before renaming, deleting, or modifying it. Understanding impact of a change.
 
@@ -76,17 +76,17 @@ lsp-goto-definition(file="src/app.ts", line=42, column=10)
 
 **Examples:**
 ```
-lsp-find-references(file="src/types.ts", line=20, column=18)
+lsp_find_references(file="src/types.ts", line=20, column=18)
 ```
 
 **Workflow tips:**
 - Place the cursor on the symbol's **declaration** to find all usages, or on a **usage** to find the declaration + other usages.
 - Includes the declaration site itself in results.
-- Use before `lsp-refactor-symbol` to understand the scope of a rename.
+- Use before `lsp_refactor_symbol` to understand the scope of a rename.
 
 ---
 
-### lsp-refactor-symbol — Rename a symbol across the codebase
+### lsp_refactor_symbol — Rename a symbol across the codebase
 
 **When:** Renaming a function, class, variable, type, or any identifier across multiple files. Safer and more accurate than find-and-replace.
 
@@ -98,18 +98,18 @@ lsp-find-references(file="src/types.ts", line=20, column=18)
 
 **Examples:**
 ```
-lsp-refactor-symbol(file="src/types.ts", line=20, column=18, newName="ServerConfig")
+lsp_refactor_symbol(file="src/types.ts", line=20, column=18, newName="ServerConfig")
 ```
 
 **Workflow tips:**
 - ⚠️ This tool does **NOT** apply the rename. It returns a unified diff patch.
 - Show the patch to the user, then use the `edit` tool to apply each change.
-- Use `lsp-find-references` first to understand scope before renaming.
+- Use `lsp_find_references` first to understand scope before renaming.
 - Works across all files that reference the symbol — imports, usages, type annotations.
 
 ---
 
-### lsp-find-symbol — Search for symbols across the workspace
+### lsp_find_symbol — Search for symbols across the workspace
 
 **When:** You know a symbol name (or partial name) and need to find where it's defined. Exploring a codebase. Looking for classes, functions, or types by name.
 
@@ -118,8 +118,8 @@ lsp-refactor-symbol(file="src/types.ts", line=20, column=18, newName="ServerConf
 
 **Examples:**
 ```
-lsp-find-symbol(query="LspManager")
-lsp-find-symbol(query="handleReq")
+lsp_find_symbol(query="LspManager")
+lsp_find_symbol(query="handleReq")
 ```
 
 **Workflow tips:**
@@ -131,7 +131,7 @@ lsp-find-symbol(query="handleReq")
 
 ---
 
-### lsp-call-hierarchy — Map function call relationships
+### lsp_call_hierarchy — Map function call relationships
 
 **When:** Understanding how functions call each other. Finding all callers of a function before modifying it. Tracing execution flow.
 
@@ -142,7 +142,7 @@ lsp-find-symbol(query="handleReq")
 
 **Examples:**
 ```
-lsp-call-hierarchy(file="src/lsp-manager.ts", line=44, column=9)
+lsp_call_hierarchy(file="src/lsp-manager.ts", line=44, column=9)
 ```
 
 **Workflow tips:**
@@ -157,29 +157,29 @@ lsp-call-hierarchy(file="src/lsp-manager.ts", line=44, column=9)
 
 ### Workflow 1: Understand a symbol before modifying it
 ```
-1. lsp-goto-definition(file, line, col)    → Find the definition
-2. lsp-find-references(file, line, col)    → See all usages
-3. lsp-call-hierarchy(file, line, col)     → Map call relationships
+1. lsp_goto_definition(file, line, col)    → Find the definition
+2. lsp_find_references(file, line, col)    → See all usages
+3. lsp_call_hierarchy(file, line, col)     → Map call relationships
 ```
 
 ### Workflow 2: Safe rename across the codebase
 ```
-1. lsp-find-references(file, line, col)                → Check scope
-2. lsp-refactor-symbol(file, line, col, newName="X")   → Get patch
+1. lsp_find_references(file, line, col)                → Check scope
+2. lsp_refactor_symbol(file, line, col, newName="X")   → Get patch
 3. edit(...)                                            → Apply the patch
 ```
 
 ### Workflow 3: Verify code after edits
 ```
 1. edit(...) or write(...)                              → Make changes
-2. lsp-diagnostics(file, refresh=true)                  → Check for errors
+2. lsp_diagnostics(file, refresh=true)                  → Check for errors
 ```
 
 ### Workflow 4: Explore an unfamiliar codebase
 ```
-1. lsp-find-symbol(query="main")                       → Find entry points
-2. lsp-call-hierarchy(file, line, col)                 → Trace call graph
-3. lsp-goto-definition(file, line, col)                → Dive into implementations
+1. lsp_find_symbol(query="main")                       → Find entry points
+2. lsp_call_hierarchy(file, line, col)                 → Trace call graph
+3. lsp_goto_definition(file, line, col)                → Dive into implementations
 ```
 
 ## Line and Column Conventions

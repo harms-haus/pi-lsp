@@ -5,7 +5,7 @@ LSP (Language Server Protocol) integration extension for [pi](https://github.com
 ## Features
 
 - **Auto-diagnostics on edit/write**: Automatically runs LSP diagnostics after `write` or `edit` tool calls complete
-- **6 LSP tools**: diagnostics, find-references, refactor-symbol, goto-definition, find-symbol, call-hierarchy
+- **6 LSP tools**: diagnostics, find-references, refactor-symbol, goto-definition, find-symbol, call-hierarchy (tool names use snake_case: `lsp_diagnostics`, `lsp_find_references`, `lsp_refactor_symbol`, `lsp_goto_definition`, `lsp_find_symbol`, `lsp_call_hierarchy`)
 - **Auto-install**: Detects missing LSP servers and prompts to install them on first use
 - **Persistent servers**: LSP servers stay alive with a 5-minute idle timeout
 - **33 languages supported**: From TypeScript to Zig, with installation commands for each
@@ -30,12 +30,12 @@ cd .pi/extensions/pi-lsp && npm install
 
 ## Tools
 
-### lsp-diagnostics
+### lsp_diagnostics
 
 Run diagnostics on a file. Shows errors, warnings, and info messages.
 
 ```
-lsp-diagnostics(file="src/index.ts", refresh=false)
+lsp_diagnostics(file="src/index.ts", refresh=false)
 ```
 
 | Parameter | Type | Description |
@@ -43,12 +43,12 @@ lsp-diagnostics(file="src/index.ts", refresh=false)
 | `file` | string | Path to the file to check |
 | `refresh` | boolean (optional) | Force refresh diagnostics from the server |
 
-### lsp-find-references
+### lsp_find_references
 
 Find all references to the symbol at the given position.
 
 ```
-lsp-find-references(file="src/index.ts", line=42, column=10)
+lsp_find_references(file="src/index.ts", line=42, column=10)
 ```
 
 | Parameter | Type | Description |
@@ -57,12 +57,12 @@ lsp-find-references(file="src/index.ts", line=42, column=10)
 | `line` | number | Line number (1-indexed) |
 | `column` | number | Column number (1-indexed) |
 
-### lsp-refactor-symbol
+### lsp_refactor_symbol
 
 Rename a symbol and return a unified diff patch. **Does not auto-apply.**
 
 ```
-lsp-refactor-symbol(file="src/index.ts", line=42, column=10, newName="newName")
+lsp_refactor_symbol(file="src/index.ts", line=42, column=10, newName="newName")
 ```
 
 | Parameter | Type | Description |
@@ -72,12 +72,12 @@ lsp-refactor-symbol(file="src/index.ts", line=42, column=10, newName="newName")
 | `column` | number | Column number (1-indexed) |
 | `newName` | string | New name for the symbol |
 
-### lsp-goto-definition
+### lsp_goto_definition
 
 Find the definition of a symbol at the given position.
 
 ```
-lsp-goto-definition(file="src/index.ts", line=42, column=10)
+lsp_goto_definition(file="src/index.ts", line=42, column=10)
 ```
 
 | Parameter | Type | Description |
@@ -86,24 +86,24 @@ lsp-goto-definition(file="src/index.ts", line=42, column=10)
 | `line` | number | Line number (1-indexed) |
 | `column` | number | Column number (1-indexed) |
 
-### lsp-find-symbol
+### lsp_find_symbol
 
 Fuzzy search for symbols across the workspace.
 
 ```
-lsp-find-symbol(query="MyClass")
+lsp_find_symbol(query="MyClass")
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `query` | string | Fuzzy symbol name to search for |
 
-### lsp-call-hierarchy
+### lsp_call_hierarchy
 
 Show call hierarchy for a function (incoming and outgoing calls).
 
 ```
-lsp-call-hierarchy(file="src/index.ts", line=42, column=10)
+lsp_call_hierarchy(file="src/index.ts", line=42, column=10)
 ```
 
 | Parameter | Type | Description |

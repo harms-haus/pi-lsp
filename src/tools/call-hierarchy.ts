@@ -1,5 +1,5 @@
 /**
- * lsp-call-hierarchy tool: Show incoming/outgoing calls for a function
+ * lsp_call_hierarchy tool: Show incoming/outgoing calls for a function
  */
 
 import { Type } from "typebox";
@@ -20,12 +20,12 @@ export function registerCallHierarchyTool(
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp-call-hierarchy",
+    name: "lsp_call_hierarchy",
     label: "LSP Call Hierarchy",
     description: "List call hierarchies for a function at the given position. Shows incoming calls (who calls this) and outgoing calls (what this calls).",
     promptSnippet: "Show what calls a function and what it calls",
     promptGuidelines: [
-      "Use lsp-call-hierarchy with file path, line, and column on a function/method to see its callers and callees.",
+      "Use lsp_call_hierarchy with file path, line, and column on a function/method to see its callers and callees.",
       "Line and column are 1-indexed.",
     ],
     parameters: Schema,

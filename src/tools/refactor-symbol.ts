@@ -1,5 +1,5 @@
 /**
- * lsp-refactor-symbol tool: Rename a symbol across the codebase
+ * lsp_refactor_symbol tool: Rename a symbol across the codebase
  */
 
 import { Type } from "typebox";
@@ -27,12 +27,12 @@ export function registerRefactorSymbolTool(
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp-refactor-symbol",
+    name: "lsp_refactor_symbol",
     label: "LSP Refactor Symbol",
     description: "Rename a symbol at the given position. Returns a unified diff patch that can be applied with the edit tool. Does NOT automatically apply changes.",
     promptSnippet: "Rename a symbol across the codebase (returns a patch to apply)",
     promptGuidelines: [
-      "Use lsp-refactor-symbol to rename a symbol. It returns a patch — use the edit tool to apply it.",
+      "Use lsp_refactor_symbol to rename a symbol. It returns a patch — use the edit tool to apply it.",
       "Do not apply the patch automatically; show it to the user first.",
     ],
     parameters: Schema,

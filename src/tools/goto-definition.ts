@@ -1,5 +1,5 @@
 /**
- * lsp-goto-definition tool: Find symbol definition
+ * lsp_goto_definition tool: Find symbol definition
  */
 
 import { Type } from "typebox";
@@ -19,12 +19,12 @@ export function registerGotoDefinitionTool(
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp-goto-definition",
+    name: "lsp_goto_definition",
     label: "LSP Go to Definition",
     description: "Find the definition of the symbol at the given position in a file.",
     promptSnippet: "Find where a symbol is defined",
     promptGuidelines: [
-      "Use lsp-goto-definition with file path, line, and column to find a symbol's definition.",
+      "Use lsp_goto_definition with file path, line, and column to find a symbol's definition.",
       "Line and column are 1-indexed.",
     ],
     parameters: Schema,

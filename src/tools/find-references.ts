@@ -1,5 +1,5 @@
 /**
- * lsp-find-references tool: Find all references to a symbol
+ * lsp_find_references tool: Find all references to a symbol
  */
 
 import { Type } from "typebox";
@@ -19,12 +19,12 @@ export function registerFindReferencesTool(
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp-find-references",
+    name: "lsp_find_references",
     label: "LSP Find References",
     description: "Find all references to the symbol at the given position in a file. Returns a list of locations where the symbol is used.",
     promptSnippet: "Find all references to a symbol in the codebase",
     promptGuidelines: [
-      "Use lsp-find-references with file path, line, and column to find all references to a symbol.",
+      "Use lsp_find_references with file path, line, and column to find all references to a symbol.",
       "Line and column are 1-indexed.",
     ],
     parameters: Schema,

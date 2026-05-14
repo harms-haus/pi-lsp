@@ -1,5 +1,5 @@
 /**
- * lsp-find-symbol tool: Search for symbols across the workspace
+ * lsp_find_symbol tool: Search for symbols across the workspace
  */
 
 import { Type } from "typebox";
@@ -25,12 +25,12 @@ export function registerFindSymbolTool(
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp-find-symbol",
+    name: "lsp_find_symbol",
     label: "LSP Find Symbol",
     description: "Search for symbols (functions, classes, variables, etc.) matching a fuzzy query across the workspace.",
     promptSnippet: "Search for symbols by name across the workspace",
     promptGuidelines: [
-      "Use lsp-find-symbol to search for a symbol by name. It searches the entire workspace.",
+      "Use lsp_find_symbol to search for a symbol by name. It searches the entire workspace.",
     ],
     parameters: Schema,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
