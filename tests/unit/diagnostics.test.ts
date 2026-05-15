@@ -18,7 +18,7 @@ describe("registerDiagnosticsHook", () => {
     const mockPi = createMockPi() as any;
     const mockManager = {} as LspManager;
 
-    registerDiagnosticsHook(mockPi, mockManager);
+    registerDiagnosticsHook(mockPi, () => mockManager);
 
     expect(mockPi.on).toHaveBeenCalledWith("tool_result", expect.any(Function));
   });
@@ -27,7 +27,7 @@ describe("registerDiagnosticsHook", () => {
     const mockPi = createMockPi() as any;
     const mockManager = {} as LspManager;
 
-    registerDiagnosticsHook(mockPi, mockManager);
+    registerDiagnosticsHook(mockPi, () => mockManager);
 
     expect(mockPi.on).toHaveBeenCalledWith("turn_end", expect.any(Function));
   });
@@ -36,7 +36,7 @@ describe("registerDiagnosticsHook", () => {
     const mockPi = createMockPi() as any;
     const mockManager = {} as LspManager;
 
-    registerDiagnosticsHook(mockPi, mockManager);
+    registerDiagnosticsHook(mockPi, () => mockManager);
 
     expect(mockPi.on).toHaveBeenCalledTimes(2);
   });
@@ -68,7 +68,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       // Simulate a tool_result for a write on a .ts file
       await mockPi.handlers["tool_result"][0](
@@ -101,7 +101,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       await mockPi.handlers["tool_result"][0](
         { toolName: "write", input: { path: "/test/file.ts" } },
@@ -131,7 +131,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       // Simulate two modified .ts files
       await mockPi.handlers["tool_result"][0](
@@ -167,7 +167,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       // Emit turn_end without any prior tool_result for write/edit
       const turnEndPromise = mockPi.handlers["turn_end"][0]({}, ctx);
@@ -194,7 +194,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       await mockPi.handlers["tool_result"][0](
         { toolName: "write", input: { path: "/test/file.ts" } },
@@ -223,7 +223,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       await mockPi.handlers["tool_result"][0](
         { toolName: "write", input: { path: "/test/file.ts" } },
@@ -255,7 +255,7 @@ describe("registerDiagnosticsHook", () => {
         ui: { setStatus, notify },
       };
 
-      registerDiagnosticsHook(mockPi, mockManager);
+      registerDiagnosticsHook(mockPi, () => mockManager);
 
       await mockPi.handlers["tool_result"][0](
         { toolName: "write", input: { path: "/test/file.ts" } },

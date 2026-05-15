@@ -401,9 +401,10 @@ export function languageFromPath(filePath: string): LspServerConfig | undefined 
 /** Check if a language server is installed */
 export async function isServerInstalled(config: LspServerConfig): Promise<boolean> {
   try {
-    const { exec } = await import("node:child_process");
+    const { execFile } = await import("node:child_process");
     return await new Promise<boolean>((resolve) => {
-      exec(config.detectCommand, { timeout: 10000 }, (error) => {
+      const parts = config.detectCommand.split(/\s+/);
+      execFile(parts[0], parts.slice(1), { timeout: 10000 }, (error) => {
         resolve(!error);
       });
     });

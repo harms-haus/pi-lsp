@@ -3,7 +3,7 @@ import { languageFromPath, getConfigForExtension, isServerInstalled } from "../.
 import { TEST_TS_CONFIG, TEST_PY_CONFIG } from "../helpers/fixtures.js";
 
 // Mock child_process
-const { exec } = await import("node:child_process");
+const { execFile } = await import("node:child_process");
 
 describe("languageFromPath", () => {
   it("should detect TypeScript from .ts extension", () => {
@@ -176,8 +176,8 @@ describe("isServerInstalled", () => {
   });
 
   it("should return true when detect command succeeds", async () => {
-    vi.mocked(exec).mockImplementation((cmd, options, callback) => {
-      const cb = callback as (error: Error | null, stdout: string, stderr: string) => void;
+    vi.mocked(execFile).mockImplementation((cmd, args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
       cb(null, "typescript-language-server 4.0.0\n", "");
       return { kill: vi.fn() } as any;
     });
@@ -187,8 +187,8 @@ describe("isServerInstalled", () => {
   });
 
   it("should return false when detect command fails", async () => {
-    vi.mocked(exec).mockImplementation((cmd, options, callback) => {
-      const cb = callback as (error: Error | null, stdout: string, stderr: string) => void;
+    vi.mocked(execFile).mockImplementation((cmd, args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
       cb(new Error("Command not found"), "", "");
       return { kill: vi.fn() } as any;
     });
@@ -198,8 +198,8 @@ describe("isServerInstalled", () => {
   });
 
   it("should return false when detect command throws", async () => {
-    vi.mocked(exec).mockImplementation(() => {
-      throw new Error("exec failed");
+    vi.mocked(execFile).mockImplementation(() => {
+      throw new Error("execFile failed");
     });
 
     const installed = await isServerInstalled(TEST_PY_CONFIG);
@@ -207,15 +207,17 @@ describe("isServerInstalled", () => {
   });
 
   it("should call correct detect command", async () => {
-    vi.mocked(exec).mockImplementation((cmd, options, callback) => {
-      const cb = callback as (error: Error | null, stdout: string, stderr: string) => void;
+    vi.mocked(execFile).mockImplementation((cmd, args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
       cb(null, "typescript-language-server 4.0.0\n", "");
       return { kill: vi.fn() } as any;
     });
 
     await isServerInstalled(TEST_TS_CONFIG);
-    expect(exec).toHaveBeenCalledWith(
-      TEST_TS_CONFIG.detectCommand,
+    const parts = TEST_TS_CONFIG.detectCommand.split(/\s+/);
+    expect(execFile).toHaveBeenCalledWith(
+      parts[0],
+      parts.slice(1),
       expect.objectContaining({ timeout: 10000 }),
       expect.any(Function),
     );

@@ -5,7 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, toolError, uriToFilePath } from "./shared.js";
+import { executePreamble, toolError, uriToFilePath, sanitizeError } from "./shared.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),
@@ -61,7 +61,7 @@ export function registerFindImplementationsTool(
           },
         };
       } catch (err) {
-        return toolError(`Failed to find implementations: ${(err as Error).message}`, {
+        return toolError(sanitizeError(err, "Failed to find implementations"), {
           file: params.file,
           line: params.line,
           column: params.column,

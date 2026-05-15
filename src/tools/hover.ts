@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Hover } from "vscode-languageserver-types";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, toolError } from "./shared.js";
+import { executePreamble, toolError, sanitizeError } from "./shared.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),
@@ -83,7 +83,7 @@ export function registerHoverTool(
           details: { file: params.file, line: params.line, column: params.column, hoverContent, range },
         };
       } catch (err) {
-        return toolError(`Failed to get hover information: ${(err as Error).message}`, {
+        return toolError(sanitizeError(err, "Failed to get hover information"), {
           file: params.file,
           line: params.line,
           column: params.column,

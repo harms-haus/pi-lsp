@@ -2,6 +2,7 @@
  * Shared utilities for LSP tool handlers
  */
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { LspManager } from "../lsp-manager.js";
@@ -54,9 +55,30 @@ export interface ToolUI {
 
 // ── Path Helpers ───────────────────────────────────────────────────────────
 
-/** Resolve a file path relative to cwd */
+/** Resolve a file path relative to cwd, with workspace boundary validation */
 export function resolveFile(file: string, cwd: string): string {
-  return path.isAbsolute(file) ? file : path.resolve(cwd, file);
+  const resolved = path.isAbsolute(file) ? file : path.resolve(cwd, file);
+  // Normalize to prevent path traversal
+  const normalized = path.normalize(resolved);
+  // Validate the resolved path is within the workspace
+  try {
+    const realCwd = fs.realpathSync(cwd);
+    // For paths that don't exist yet, use normalized path; for existing paths, use realpath
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(normalized);
+    } catch {
+      // File doesn't exist yet — check the normalized path
+      realPath = normalized;
+    }
+    if (!realPath.startsWith(realCwd + path.sep) && realPath !== realCwd) {
+      throw new Error(`Path traversal: "${file}" resolves outside the workspace.`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Path traversal:")) throw err;
+    // If realpath fails (cwd doesn't exist), just use normalized path
+  }
+  return normalized;
 }
 
 /** Convert a file:// URI to a local file path */
@@ -90,16 +112,19 @@ export async function ensureServerInstalled(
 
   ui.notify(`Installing ${language} LSP server...`, "info");
 
-  const { exec } = await import("node:child_process");
+  const { execFile } = await import("node:child_process");
+  const installParts = config.installCommand.split(/\s+/);
+  const installCmd = installParts[0];
+  const installArgs = installParts.slice(1);
   const result = await new Promise<{ success: boolean; output: string }>((resolve) => {
-    exec(config.installCommand, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(installCmd, installArgs, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       const output = stdout + stderr;
       resolve({ success: !error, output });
     });
   });
 
   if (!result.success) {
-    ui.notify(`Failed to install ${language} LSP server: ${result.output}`, "error");
+    ui.notify(`Failed to install ${language} LSP server. Check the install command: ${config.installCommand}`, "error");
     return false;
   }
 
@@ -211,6 +236,20 @@ export function toolError(message: string, details: Record<string, unknown> = {}
     details,
     isError: true,
   };
+}
+
+// ── Error Sanitization ─────────────────────────────────────────────────────
+
+/** Sanitize an error for safe display in tool results (avoids leaking internal paths/details) */
+export function sanitizeError(err: unknown, context: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+  // Strip common internal path patterns
+  const sanitized = message
+    .replace(/\/home\/[^/\s]+/g, "~")
+    .replace(/\/Users\/[^/\s]+/g, "~")
+    .replace(/\/root\//g, "/")
+    .replace(/C:\\\\Users\\[^\\]+/g, "~");
+  return `${context}: ${sanitized}`;
 }
 
 // ── Text/Diff Utilities ────────────────────────────────────────────────────

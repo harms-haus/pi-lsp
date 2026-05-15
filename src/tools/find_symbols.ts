@@ -13,7 +13,9 @@ import {
   parseSymbolKind,
   SYMBOL_KIND_NAMES,
   MAX_SYMBOL_RESULTS,
+  sanitizeError,
 } from "./shared.js";
+import * as fs from "node:fs";
 import { LANGUAGE_SERVERS, languageFromPath, isServerInstalled } from "../language-config.js";
 
 const Schema = Type.Object({
@@ -72,12 +74,24 @@ export function registerFindSymbolsTool(
 
       // Start a new server based on workspace files
       if (!client) {
+        // Validate cwd is a real directory
+        let realCwd: string;
+        try {
+          realCwd = fs.realpathSync(cwd);
+          const stat = fs.statSync(realCwd);
+          if (!stat.isDirectory()) {
+            return toolError("Workspace directory is not a valid directory.");
+          }
+        } catch {
+          return toolError("Workspace directory does not exist or is not accessible.");
+        }
+
         const { execFileSync } = await import("node:child_process");
         try {
                     const files = execFileSync(
             "find",
             [
-              cwd, "-maxdepth", "3", "-type", "f",
+              realCwd, "-maxdepth", "3", "-type", "f",
               "(", "-name", "*.ts", "-o", "-name", "*.py",
               "-o", "-name", "*.js", "-o", "-name", "*.rs",
               "-o", "-name", "*.go", "-o", "-name", "*.java", ")",
@@ -161,7 +175,7 @@ export function registerFindSymbolsTool(
           },
         };
       } catch (err) {
-        return toolError(`Failed to find symbols: ${(err as Error).message}`, { query: params.query });
+        return toolError(sanitizeError(err, "Failed to find symbols"), { query: params.query });
       }
     },
   });

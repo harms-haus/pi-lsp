@@ -5,7 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, toolError, uriToFilePath } from "./shared.js";
+import { executePreamble, toolError, uriToFilePath, sanitizeError } from "./shared.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),
@@ -53,7 +53,7 @@ export function registerFindReferencesTool(
           details: { file: params.file, line: params.line, column: params.column, references: locations, count: locations.length },
         };
       } catch (err) {
-        return toolError(`Failed to find references: ${(err as Error).message}`, { file: params.file, line: params.line, column: params.column });
+        return toolError(sanitizeError(err, "Failed to find references"), { file: params.file, line: params.line, column: params.column });
       }
     },
   });

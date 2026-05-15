@@ -45,7 +45,6 @@ export default function (pi: ExtensionAPI) {
   function initManager(): void {
     if (manager) return;
     manager = new LspManager(cwd, IDLE_TIMEOUT_MS);
-    registerDiagnosticsHook(pi, manager);
   }
 
   // ── Session Lifecycle ──────────────────────────────────────────────────
@@ -75,6 +74,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── Register Tools ─────────────────────────────────────────────────────
+
+  registerDiagnosticsHook(pi, getManager);
 
   registerDiagnosticsTool(pi, getManager, getCwd);
   registerFindReferencesTool(pi, getManager, getCwd);

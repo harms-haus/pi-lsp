@@ -10,6 +10,7 @@ import {
   toolError,
   uriToFilePath,
   SEVERITY_NAMES,
+  sanitizeError,
 } from "./shared.js";
 
 const Schema = Type.Object({
@@ -61,9 +62,14 @@ export function registerDiagnosticsTool(
             if (diagnostics.length === 0) continue;
 
             const filePath = uri.startsWith("file://") ? uriToFilePath(uri) : uri;
-            const errorCount = diagnostics.filter((d) => d.severity === 1).length;
-            const warningCount = diagnostics.filter((d) => d.severity === 2).length;
-            const infoCount = diagnostics.filter((d) => d.severity === 3 || d.severity === 4).length;
+            let errorCount = 0;
+            let warningCount = 0;
+            let infoCount = 0;
+            for (const d of diagnostics) {
+              if (d.severity === 1) errorCount++;
+              else if (d.severity === 2) warningCount++;
+              else if (d.severity === 3 || d.severity === 4) infoCount++;
+            }
 
             totalErrors += errorCount;
             totalWarnings += warningCount;
@@ -94,7 +100,7 @@ export function registerDiagnosticsTool(
             details: { workspace: true, fileCount: allDiags.size, total: totalDiags, errorCount: totalErrors, warningCount: totalWarnings, infoCount: totalInfo },
           };
         } catch (err) {
-          return toolError(`Failed to get workspace diagnostics: ${(err as Error).message}`);
+          return toolError(sanitizeError(err, "Failed to get workspace diagnostics"));
         }
       }
 
@@ -110,9 +116,14 @@ export function registerDiagnosticsTool(
 
       try {
         const diagnostics = await manager.getDiagnostics(filePath, params.refresh ?? false);
-        const errorCount = diagnostics.filter((d) => d.severity === 1).length;
-        const warningCount = diagnostics.filter((d) => d.severity === 2).length;
-        const infoCount = diagnostics.filter((d) => d.severity === 3 || d.severity === 4).length;
+        let errorCount = 0;
+        let warningCount = 0;
+        let infoCount = 0;
+        for (const d of diagnostics) {
+          if (d.severity === 1) errorCount++;
+          else if (d.severity === 2) warningCount++;
+          else if (d.severity === 3 || d.severity === 4) infoCount++;
+        }
 
         const lines = diagnostics.map((d) => {
           const startLine = d.range.start.line + 1;
@@ -132,7 +143,7 @@ export function registerDiagnosticsTool(
           details: { file: params.file, language: config.language, errorCount, warningCount, infoCount, total: diagnostics.length },
         };
       } catch (err) {
-        return toolError(`Failed to get diagnostics: ${(err as Error).message}`, { file: params.file });
+        return toolError(sanitizeError(err, "Failed to get diagnostics"), { file: params.file });
       }
     },
   });

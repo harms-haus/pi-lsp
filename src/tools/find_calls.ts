@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
 import type { CallHierarchyItem, Range } from "vscode-languageserver-types";
-import { executePreamble, toolError, uriToFilePath } from "./shared.js";
+import { executePreamble, toolError, uriToFilePath, sanitizeError } from "./shared.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),
@@ -102,7 +102,7 @@ export function registerFindCallsTool(
           },
         };
       } catch (err) {
-        return toolError(`Failed to get call hierarchy: ${(err as Error).message}`, { file: params.file });
+        return toolError(sanitizeError(err, "Failed to get call hierarchy"), { file: params.file });
       }
     },
   });

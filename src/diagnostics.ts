@@ -17,15 +17,13 @@ function pluralize(count: number, singular: string): string {
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-/** Delay before triggering diagnostics after file change (ms) */
-const DIAGNOSTICS_SETTLE_DELAY_MS = 500;
-/** Wait time for diagnostics to arrive from server (ms) */
+/** Wait time for diagnostics to arrive from server after batch open (ms) */
 const DIAGNOSTICS_WAIT_MS = 1000;
 
 /**
  * Register event handlers to auto-run diagnostics after file edits/writes
  */
-export function registerDiagnosticsHook(pi: ExtensionAPI, manager: LspManager): void {
+export function registerDiagnosticsHook(pi: ExtensionAPI, getManager: () => LspManager | null): void {
   // Track files that have been modified in the current turn
   const modifiedFiles = new Set<string>();
 
@@ -53,32 +51,50 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, manager: LspManager): 
   pi.on("turn_end", async (event, ctx) => {
     if (modifiedFiles.size === 0) return;
 
+    const manager = getManager();
+    if (!manager) return;
+
     const filesToCheck = Array.from(modifiedFiles);
     modifiedFiles.clear();
 
-    // Small delay to let LSP server process the changes
-    await new Promise((r) => setTimeout(r, DIAGNOSTICS_SETTLE_DELAY_MS));
+    // Filter to files that have a known language config
+    const checkableFiles = filesToCheck.filter((filePath) => {
+      try {
+        return !!languageFromPath(filePath);
+      } catch {
+        return false;
+      }
+    });
+
+    if (checkableFiles.length === 0) return;
+
+    // Batch: open all files in parallel first
+    await Promise.all(
+      checkableFiles.map((filePath) =>
+        manager.onFileChanged(filePath).catch(() => {
+          /* ignore individual open failures */
+        }),
+      ),
+    );
+
+    // Single wait for all servers to process
+    await new Promise((r) => setTimeout(r, DIAGNOSTICS_WAIT_MS));
 
     // Accumulate totals across all files
     let totalErrors = 0;
     let totalWarnings = 0;
     let filesChecked = 0;
 
-    // Run diagnostics for each modified file
-    for (const filePath of filesToCheck) {
+    // Now read diagnostics for each file (fast cache reads)
+    for (const filePath of checkableFiles) {
       try {
-        const config = languageFromPath(filePath);
-        if (!config) continue;
-
-        // Trigger the file change in LSP (open + didChange)
-        await manager.onFileChanged(filePath);
-
-        // Wait briefly for diagnostics to arrive, then check
-        await new Promise((r) => setTimeout(r, DIAGNOSTICS_WAIT_MS));
-
         const diagnostics = await manager.getDiagnostics(filePath, true);
-        const errors = diagnostics.filter((d) => d.severity === 1).length;
-        const warnings = diagnostics.filter((d) => d.severity === 2).length;
+        let errors = 0;
+        let warnings = 0;
+        for (const d of diagnostics) {
+          if (d.severity === 1) errors++;
+          else if (d.severity === 2) warnings++;
+        }
 
         totalErrors += errors;
         totalWarnings += warnings;

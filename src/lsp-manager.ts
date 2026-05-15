@@ -249,6 +249,23 @@ export class LspManager {
 
     server.fileVersions.set(uri, newVersion);
     server.lastActive = Date.now();
+
+    // Cap tracked files to prevent unbounded growth
+    const MAX_TRACKED_FILES = 200;
+    if (server.fileVersions.size > MAX_TRACKED_FILES) {
+      // Remove oldest entries (first in the map)
+      const toDelete: string[] = [];
+      let count = 0;
+      for (const key of server.fileVersions.keys()) {
+        toDelete.push(key);
+        count++;
+        if (count >= server.fileVersions.size - MAX_TRACKED_FILES + 10) break;
+      }
+      for (const key of toDelete) {
+        server.fileVersions.delete(key);
+        server.diagnostics.delete(key);
+      }
+    }
   }
 
   /** Handle a file being written/edited — open it and trigger diagnostics */
@@ -271,6 +288,20 @@ export class LspManager {
       result.push({ language: lang, status: server.status, pid: server.pid });
     }
     return result;
+  }
+
+  /** Remove cached data for a file URI */
+  private cleanupFile(uri: string): void {
+    for (const server of this.state.servers.values()) {
+      server.fileVersions.delete(uri);
+      server.diagnostics.delete(uri);
+    }
+  }
+
+  /** Notify that a file has been closed — clean up cached data */
+  fileClosed(filePath: string): void {
+    const uri = pathToFileURL(filePath).href;
+    this.cleanupFile(uri);
   }
 
   /** Get the client map (for direct access by tools) */

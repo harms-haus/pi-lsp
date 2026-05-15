@@ -6,12 +6,15 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
 import type { TextDocumentEdit, TextEdit } from "vscode-languageserver-types";
+import * as path from "node:path";
+import * as fs from "node:fs";
 import {
   executePreamble,
   toolError,
   uriToFilePath,
   applyEdits,
   buildDiff,
+  sanitizeError,
 } from "./shared.js";
 
 const Schema = Type.Object({
@@ -41,6 +44,18 @@ export function registerRenameSymbolTool(
       if ("error" in preamble) return preamble.error;
 
       const { client, uri, filePath } = preamble.ok;
+      const cwd = getCwd();
+
+      function isWithinWorkspace(file: string, workspaceRoot: string): boolean {
+        const normalized = path.normalize(file);
+        try {
+          const realRoot = fs.realpathSync(workspaceRoot);
+          const realFile = fs.realpathSync(normalized);
+          return realFile.startsWith(realRoot + path.sep) || realFile === realRoot;
+        } catch {
+          return normalized.startsWith(path.normalize(workspaceRoot) + path.sep);
+        }
+      }
 
       try {
         // Try to get the current symbol name
@@ -63,8 +78,7 @@ export function registerRenameSymbolTool(
         // If we got a range but no placeholder, extract the text from the file
         if (oldName === "(unknown)" && renameRange) {
           try {
-            const { readFileSync } = await import("node:fs");
-            const content = readFileSync(filePath, "utf-8");
+            const content = fs.readFileSync(filePath, "utf-8");
             const lines = content.split("\n");
             const startLine = lines[renameRange.start.line] || "";
             const endLine = lines[renameRange.end.line] || "";
@@ -79,8 +93,7 @@ export function registerRenameSymbolTool(
         // Final fallback: extract word at cursor position
         if (oldName === "(unknown)") {
           try {
-            const { readFileSync } = await import("node:fs");
-            const content = readFileSync(filePath, "utf-8");
+            const content = fs.readFileSync(filePath, "utf-8");
             const lines = content.split("\n");
             const lineContent = lines[params.line - 1] ?? "";
             const col = params.column - 1;
@@ -107,11 +120,14 @@ export function registerRenameSymbolTool(
             if (textEdit.textDocument && textEdit.edits && Array.isArray(textEdit.edits)) {
               const changeUri = textEdit.textDocument.uri;
               const changePath = uriToFilePath(changeUri);
+              if (!isWithinWorkspace(changePath, cwd)) {
+                patchParts.push(`--- skipped: ${changePath} (outside workspace)`);
+                continue;
+              }
               const sorted = [...textEdit.edits].sort((a: TextEdit, b: TextEdit) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character);
               fileCount++;
               try {
-                const { readFileSync } = await import("node:fs");
-                const original = readFileSync(changePath, "utf-8");
+                const original = fs.readFileSync(changePath, "utf-8");
                 const modified = applyEdits(original, sorted);
                 patchParts.push(buildDiff(changePath, original, modified));
               } catch {
@@ -129,11 +145,14 @@ export function registerRenameSymbolTool(
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP workspace edit is loosely typed, need runtime checks
           if (fileCount > 0 && docChanges.some((dc) => typeof dc === "object" && dc !== null && "textDocument" in dc && dc.textDocument?.uri === changeUri)) continue;
           const changePath = uriToFilePath(changeUri);
+          if (!isWithinWorkspace(changePath, cwd)) {
+            patchParts.push(`--- skipped: ${changePath} (outside workspace)`);
+            continue;
+          }
           const sorted = [...edits].sort((a: TextEdit, b: TextEdit) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character);
           fileCount++;
           try {
-            const { readFileSync } = await import("node:fs");
-            const original = readFileSync(changePath, "utf-8");
+            const original = fs.readFileSync(changePath, "utf-8");
             const modified = applyEdits(original, sorted);
             patchParts.push(buildDiff(changePath, original, modified));
           } catch {
@@ -153,7 +172,7 @@ export function registerRenameSymbolTool(
           details: { file: params.file, oldName, newName: params.newName, patch, fileCount },
         };
       } catch (err) {
-        return toolError(`Failed to refactor symbol: ${(err as Error).message}`, { file: params.file });
+        return toolError(sanitizeError(err, "Failed to rename symbol"), { file: params.file });
       }
     },
   });

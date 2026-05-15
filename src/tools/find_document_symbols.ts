@@ -5,7 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, toolError, SYMBOL_KIND_NAMES } from "./shared.js";
+import { executePreamble, toolError, SYMBOL_KIND_NAMES, sanitizeError } from "./shared.js";
 import type { DocumentSymbol, SymbolInformation } from "vscode-languageserver-types";
 
 const Schema = Type.Object({
@@ -92,7 +92,7 @@ export function registerFindDocumentSymbolsTool(
           details: { file: params.file, count: flat.length, symbols: flat },
         };
       } catch (err) {
-        return toolError(`Failed to get document symbols: ${(err as Error).message}`, { file: params.file });
+        return toolError(sanitizeError(err, "Failed to get document symbols"), { file: params.file });
       }
     },
   });
