@@ -1,5 +1,5 @@
 /**
- * lsp_find_references tool: Find all references to a symbol
+ * find_implementations tool: Find all implementations of an interface, abstract class, or type
  */
 
 import { Type } from "typebox";
@@ -13,19 +13,21 @@ const Schema = Type.Object({
   column: Type.Number({ description: "Column number (1-indexed)" }),
 });
 
-export function registerFindReferencesTool(
+export function registerFindImplementationsTool(
   pi: ExtensionAPI,
   getManager: () => LspManager | null,
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp_find_references",
-    label: "LSP Find References",
-    description: "Find all references to the symbol at the given position in a file. Returns a list of locations where the symbol is used.",
-    promptSnippet: "Find all references to a symbol in the codebase",
+    name: "find_implementations",
+    label: "Find Implementations",
+    description:
+      "Find all implementations of an interface, abstract class, or type at the given position. Returns locations of concrete implementations.",
+    promptSnippet: "Find all implementations of an interface or abstract class",
     promptGuidelines: [
-      "Use lsp_find_references with file path, line, and column to find all references to a symbol.",
+      "Use find_implementations with file path, line, and column on an interface, abstract class, or type to find its concrete implementations.",
       "Line and column are 1-indexed.",
+      "Works best on interface/type definitions — place cursor on the type name itself.",
     ],
     parameters: Schema,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -35,7 +37,7 @@ export function registerFindReferencesTool(
       const { client, uri } = preamble.ok;
 
       try {
-        const result = await client.findReferences(uri, params.line - 1, params.column - 1);
+        const result = await client.findImplementations(uri, params.line - 1, params.column - 1);
         const locations: { uri: string; line: number; col: number }[] = Array.isArray(result)
           ? result.map((loc) => ({
               uri: loc.uri,
@@ -49,11 +51,21 @@ export function registerFindReferencesTool(
           : "(none)";
 
         return {
-          content: [{ type: "text", text: `References found: ${locations.length}\n\n${formatted}` }],
-          details: { file: params.file, line: params.line, column: params.column, references: locations, count: locations.length },
+          content: [{ type: "text", text: `Implementations found: ${locations.length}\n\n${formatted}` }],
+          details: {
+            file: params.file,
+            line: params.line,
+            column: params.column,
+            implementations: locations,
+            count: locations.length,
+          },
         };
       } catch (err) {
-        return toolError(`Failed to find references: ${(err as Error).message}`, { file: params.file, line: params.line, column: params.column });
+        return toolError(`Failed to find implementations: ${(err as Error).message}`, {
+          file: params.file,
+          line: params.line,
+          column: params.column,
+        });
       }
     },
   });

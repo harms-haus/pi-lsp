@@ -4,8 +4,9 @@
  * Features:
  * - Auto-diagnostics on file edit/write
  * - Auto-install LSP servers on first use
- * - 6 LSP tools: diagnostics, find-references, refactor-symbol,
- *                 goto-definition, find-symbol, call-hierarchy
+ * - 11 LSP tools: diagnostics, find_references, rename_symbol, find_definition, find_symbols,
+ *                  find_calls, find_document_symbols, hover, find_implementations,
+ *                  find_type_definition, find_type_hierarchy
  * - Persistent LSP servers with 5-min idle timeout
  * - 33 language LSP support
  */
@@ -14,11 +15,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { LspManager } from "./lsp-manager.js";
 import { registerDiagnosticsHook } from "./diagnostics.js";
 import { registerDiagnosticsTool } from "./tools/diagnostics.js";
-import { registerFindReferencesTool } from "./tools/find-references.js";
-import { registerRefactorSymbolTool } from "./tools/refactor-symbol.js";
-import { registerGotoDefinitionTool } from "./tools/goto-definition.js";
-import { registerFindSymbolTool } from "./tools/find-symbol.js";
-import { registerCallHierarchyTool } from "./tools/call-hierarchy.js";
+import { registerFindReferencesTool } from "./tools/find_references.js";
+import { registerFindDefinitionTool } from "./tools/find_definition.js";
+import { registerFindSymbolsTool } from "./tools/find_symbols.js";
+import { registerFindCallsTool } from "./tools/find_calls.js";
+import { registerRenameSymbolTool } from "./tools/rename_symbol.js";
+import { registerFindDocumentSymbolsTool } from "./tools/find_document_symbols.js";
+import { registerHoverTool } from "./tools/hover.js";
+import { registerFindImplementationsTool } from "./tools/find_implementations.js";
+import { registerFindTypeDefinitionTool } from "./tools/find_type_definition.js";
+import { registerFindTypeHierarchyTool } from "./tools/find_type_hierarchy.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -72,10 +78,15 @@ export default function (pi: ExtensionAPI) {
 
   registerDiagnosticsTool(pi, getManager, getCwd);
   registerFindReferencesTool(pi, getManager, getCwd);
-  registerRefactorSymbolTool(pi, getManager, getCwd);
-  registerGotoDefinitionTool(pi, getManager, getCwd);
-  registerFindSymbolTool(pi, getManager, getCwd);
-  registerCallHierarchyTool(pi, getManager, getCwd);
+  registerFindDefinitionTool(pi, getManager, getCwd);
+  registerFindSymbolsTool(pi, getManager, getCwd);
+  registerFindCallsTool(pi, getManager, getCwd);
+  registerRenameSymbolTool(pi, getManager, getCwd);
+  registerFindDocumentSymbolsTool(pi, getManager, getCwd);
+  registerHoverTool(pi, getManager, getCwd);
+  registerFindImplementationsTool(pi, getManager, getCwd);
+  registerFindTypeDefinitionTool(pi, getManager, getCwd);
+  registerFindTypeHierarchyTool(pi, getManager, getCwd);
 
   // ── Status Publishing ───────────────────────────────────────────────────
 

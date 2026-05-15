@@ -14,6 +14,8 @@ import type {
   CallHierarchyOutgoingCall,
   WorkspaceEdit,
   Diagnostic,
+  DocumentSymbol,
+  Hover,
 } from "vscode-languageserver-types";
 import type { LspServerConfig, LspServerInstance } from "./types.js";
 
@@ -129,6 +131,30 @@ interface CallHierarchyOutgoingCallsParams {
     selectionRange: { start: { line: number; character: number }; end: { line: number; character: number } };
     data?: unknown;
   };
+}
+
+interface PrepareTypeHierarchyParams {
+  textDocument: { uri: string };
+  position: { line: number; character: number };
+}
+
+interface TypeHierarchyItem {
+  name: string;
+  kind: number;
+  tags?: number[];
+  detail?: string;
+  uri: string;
+  range: Range;
+  selectionRange: Range;
+  children?: TypeHierarchyItem[];
+}
+
+interface TypeHierarchySupertypesParams {
+  item: TypeHierarchyItem;
+}
+
+interface TypeHierarchySubtypesParams {
+  item: TypeHierarchyItem;
 }
 
 // ── LSP Client Class ───────────────────────────────────────────────────────
@@ -425,6 +451,59 @@ export class LspClient {
   }): Promise<CallHierarchyOutgoingCall[] | null> {
     const params: CallHierarchyOutgoingCallsParams = { item };
     return this.request<CallHierarchyOutgoingCall[] | null>("callHierarchy/outgoingCalls", params, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Document symbols */
+  async documentSymbol(uri: string): Promise<DocumentSymbol[] | SymbolInformation[] | null> {
+    return this.request<DocumentSymbol[] | SymbolInformation[] | null>("textDocument/documentSymbol", { textDocument: { uri } }, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Hover */
+  async hover(uri: string, line: number, col: number): Promise<Hover | null> {
+    const params: TextDocumentPositionParams = {
+      textDocument: { uri },
+      position: { line, character: col },
+    };
+    return this.request<Hover | null>("textDocument/hover", params, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Find implementations */
+  async findImplementations(uri: string, line: number, col: number): Promise<Location | Location[] | null> {
+    const params: TextDocumentPositionParams = {
+      textDocument: { uri },
+      position: { line, character: col },
+    };
+    return this.request<Location | Location[] | null>("textDocument/implementation", params, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Find type definition */
+  async findTypeDefinition(uri: string, line: number, col: number): Promise<Location | Location[] | null> {
+    const params: TextDocumentPositionParams = {
+      textDocument: { uri },
+      position: { line, character: col },
+    };
+    return this.request<Location | Location[] | null>("textDocument/typeDefinition", params, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Prepare type hierarchy */
+  async prepareTypeHierarchy(uri: string, line: number, col: number): Promise<TypeHierarchyItem[] | null> {
+    const params: PrepareTypeHierarchyParams = {
+      textDocument: { uri },
+      position: { line, character: col },
+    };
+    return this.request<TypeHierarchyItem[] | null>("textDocument/prepareTypeHierarchy", params, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Get supertypes in type hierarchy */
+  async typeHierarchySupertypes(item: TypeHierarchyItem, resolve?: number): Promise<TypeHierarchyItem[] | null> {
+    const params: TypeHierarchySupertypesParams & { resolve?: number } = { item, ...(resolve !== undefined ? { resolve } : {}) };
+    return this.request<TypeHierarchyItem[] | null>("typeHierarchy/supertypes", params, DEFAULT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Get subtypes in type hierarchy */
+  async typeHierarchySubtypes(item: TypeHierarchyItem, resolve?: number): Promise<TypeHierarchyItem[] | null> {
+    const params: TypeHierarchySubtypesParams & { resolve?: number } = { item, ...(resolve !== undefined ? { resolve } : {}) };
+    return this.request<TypeHierarchyItem[] | null>("typeHierarchy/subtypes", params, DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   /** Shutdown the LSP server gracefully */

@@ -31,6 +31,20 @@ export const SYMBOL_KIND_NAMES: Record<number, string> = {
   25: "Operator", 26: "TypeParameter",
 };
 
+/** Reverse lookup: kind name (lowercase) → SymbolKind number */
+export const SYMBOL_KIND_BY_NAME: Record<string, number> = Object.fromEntries(
+  Object.entries(SYMBOL_KIND_NAMES).map(([num, name]) => [name.toLowerCase(), Number(num)])
+);
+
+/** Parse a kind name or number string into a SymbolKind number, or undefined */
+export function parseSymbolKind(kind: string): number | undefined {
+  // Try as number first
+  const num = Number(kind);
+  if (!Number.isNaN(num) && SYMBOL_KIND_NAMES[num]) return num;
+  // Try as name (case-insensitive)
+  return SYMBOL_KIND_BY_NAME[kind.toLowerCase()];
+}
+
 // ── UI Interface (for typing the `ui` parameter) ──────────────────────────
 
 export interface ToolUI {

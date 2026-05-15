@@ -1,5 +1,5 @@
 /**
- * lsp_find_symbol tool: Search for symbols across the workspace
+ * find_symbols tool: Search for symbols across the workspace
  */
 
 import { Type } from "typebox";
@@ -10,6 +10,7 @@ import {
   toolError,
   uriToFilePath,
   ensureServerInstalled,
+  parseSymbolKind,
   SYMBOL_KIND_NAMES,
   MAX_SYMBOL_RESULTS,
 } from "./shared.js";
@@ -17,20 +18,22 @@ import { LANGUAGE_SERVERS, languageFromPath, isServerInstalled } from "../langua
 
 const Schema = Type.Object({
   query: Type.String({ description: "Fuzzy symbol name to search for" }),
+  kind: Type.Optional(Type.String({ description: "Filter by symbol kind (e.g. \"class\", \"function\", \"interface\", \"enum\"). Case-insensitive." })),
 });
 
-export function registerFindSymbolTool(
+export function registerFindSymbolsTool(
   pi: ExtensionAPI,
   getManager: () => LspManager | null,
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp_find_symbol",
-    label: "LSP Find Symbol",
-    description: "Search for symbols (functions, classes, variables, etc.) matching a fuzzy query across the workspace.",
-    promptSnippet: "Search for symbols by name across the workspace",
+    name: "find_symbols",
+    label: "Find Symbols",
+    description: "Search for symbols (functions, classes, variables, etc.) matching a fuzzy query across the workspace. Optionally filter by symbol kind (e.g., \"class\", \"function\", \"interface\").",
+    promptSnippet: "Search for symbols by name and kind across the workspace",
     promptGuidelines: [
-      "Use lsp_find_symbol to search for a symbol by name. It searches the entire workspace.",
+      "Use find_symbols to search for a symbol by name across the entire workspace.",
+      "Optionally provide a kind parameter (e.g. \"class\", \"function\", \"interface\", \"enum\") to filter results by symbol type.",
     ],
     parameters: Schema,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -103,11 +106,20 @@ export function registerFindSymbolTool(
         const result = await client.workspaceSymbol(params.query);
         const symbols = Array.isArray(result) ? result : [];
 
-        if (symbols.length === 0) {
-          return { content: [{ type: "text", text: `No symbols found matching "${params.query}".` }], details: { query: params.query, count: 0 } };
+        let filtered = symbols;
+        if (params.kind) {
+          const kindNum = parseSymbolKind(params.kind);
+          if (kindNum !== undefined) {
+            filtered = symbols.filter(s => s.kind === kindNum);
+          }
+          // If kindNum is undefined (invalid kind name), don't filter — show all with a note
         }
 
-        const formatted = symbols.slice(0, MAX_SYMBOL_RESULTS).map((s) => {
+        if (filtered.length === 0) {
+          return { content: [{ type: "text", text: `No symbols found matching "${params.query}".` }], details: { query: params.query, kind: params.kind, count: 0 } };
+        }
+
+        const formatted = filtered.slice(0, MAX_SYMBOL_RESULTS).map((s) => {
           const name = s.name || "(unknown)";
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP symbol kind can be outside known values
           const kind = s.kind !== undefined ? (SYMBOL_KIND_NAMES[s.kind] || `Kind(${s.kind})`) : "";
@@ -121,14 +133,19 @@ export function registerFindSymbolTool(
           return `  ${name}${container} (${kind}) — ${filePath}:${line}`;
         }).join("\n");
 
-        const more = symbols.length > MAX_SYMBOL_RESULTS ? `\n  ... and ${symbols.length - MAX_SYMBOL_RESULTS} more` : "";
+        const more = filtered.length > MAX_SYMBOL_RESULTS ? `\n  ... and ${filtered.length - MAX_SYMBOL_RESULTS} more` : "";
+
+        const countLabel = params.kind
+          ? `Symbols matching "${params.query}" (kind: ${params.kind}): ${filtered.length}`
+          : `Symbols matching "${params.query}": ${filtered.length}`;
 
         return {
-          content: [{ type: "text", text: `Symbols matching "${params.query}": ${symbols.length}\n\n${formatted}${more}` }],
+          content: [{ type: "text", text: `${countLabel}\n\n${formatted}${more}` }],
           details: {
             query: params.query,
-            count: symbols.length,
-            symbols: symbols.slice(0, MAX_SYMBOL_RESULTS).map((s) => {
+            kind: params.kind,
+            count: filtered.length,
+            symbols: filtered.slice(0, MAX_SYMBOL_RESULTS).map((s) => {
               const location = s.location;
               // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP symbol location is loosely typed, need runtime checks
               const uri = typeof location === "object" && location !== null && "uri" in location ? location.uri : "";

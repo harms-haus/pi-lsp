@@ -1,5 +1,5 @@
 /**
- * lsp_goto_definition tool: Find symbol definition
+ * find_definition tool: Find symbol definition
  */
 
 import { Type } from "typebox";
@@ -13,18 +13,18 @@ const Schema = Type.Object({
   column: Type.Number({ description: "Column number (1-indexed)" }),
 });
 
-export function registerGotoDefinitionTool(
+export function registerFindDefinitionTool(
   pi: ExtensionAPI,
   getManager: () => LspManager | null,
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp_goto_definition",
-    label: "LSP Go to Definition",
-    description: "Find the definition of the symbol at the given position in a file.",
+    name: "find_definition",
+    label: "Find Definition",
+    description: "Find where the symbol at the given position is defined. Returns the definition location(s).",
     promptSnippet: "Find where a symbol is defined",
     promptGuidelines: [
-      "Use lsp_goto_definition with file path, line, and column to find a symbol's definition.",
+      "Use find_definition with file path, line, and column to jump to a symbol's definition.",
       "Line and column are 1-indexed.",
     ],
     parameters: Schema,

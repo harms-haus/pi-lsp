@@ -1,5 +1,5 @@
 /**
- * lsp_refactor_symbol tool: Rename a symbol across the codebase
+ * rename_symbol tool: Rename a symbol across the codebase
  */
 
 import { Type } from "typebox";
@@ -21,18 +21,18 @@ const Schema = Type.Object({
   newName: Type.String({ description: "New name for the symbol" }),
 });
 
-export function registerRefactorSymbolTool(
+export function registerRenameSymbolTool(
   pi: ExtensionAPI,
   getManager: () => LspManager | null,
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp_refactor_symbol",
-    label: "LSP Refactor Symbol",
+    name: "rename_symbol",
+    label: "Rename Symbol",
     description: "Rename a symbol at the given position. Returns a unified diff patch that can be applied with the edit tool. Does NOT automatically apply changes.",
     promptSnippet: "Rename a symbol across the codebase (returns a patch to apply)",
     promptGuidelines: [
-      "Use lsp_refactor_symbol to rename a symbol. It returns a patch — use the edit tool to apply it.",
+      "Use rename_symbol to rename a symbol. It returns a patch — use the edit tool to apply it.",
       "Do not apply the patch automatically; show it to the user first.",
     ],
     parameters: Schema,

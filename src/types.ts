@@ -74,7 +74,8 @@ export interface LspManagerState {
 // ── Tool Parameters (exported for use in extension) ─────────────────────────
 
 export interface LspDiagnosticsParams {
-  file: string;
+  file?: string;
+  workspace?: boolean;
   refresh?: boolean;
 }
 
@@ -99,6 +100,7 @@ export interface LspGotoDefinitionParams {
 
 export interface LspFindSymbolParams {
   query: string;
+  kind?: string;
 }
 
 export interface LspCallHierarchyParams {
@@ -106,3 +108,43 @@ export interface LspCallHierarchyParams {
   line: number;
   column: number;
 }
+
+// ── New Tool Parameter Interfaces ──────────────────────────────────────────
+
+export interface FindDocumentSymbolsParams {
+  file: string;
+}
+
+export interface HoverParams {
+  file: string;
+  line: number;
+  column: number;
+}
+
+export interface FindImplementationsParams {
+  file: string;
+  line: number;
+  column: number;
+}
+
+export interface FindTypeDefinitionParams {
+  file: string;
+  line: number;
+  column: number;
+}
+
+export interface FindTypeHierarchyParams {
+  file: string;
+  line: number;
+  column: number;
+  direction: "supertypes" | "subtypes";
+  depth: number;
+}
+
+// ── Backward-compatible type aliases (preferred names for new tools) ────────
+
+export type FindReferencesParams = LspFindReferencesParams;
+export type RenameSymbolParams = LspRefactorSymbolParams;
+export type FindDefinitionParams = LspGotoDefinitionParams;
+export type FindSymbolsParams = LspFindSymbolParams;
+export type FindCallsParams = LspCallHierarchyParams;

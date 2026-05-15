@@ -1,7 +1,7 @@
 {
   "name": "pi-lsp",
   "version": "1.0.0",
-  "description": "LSP integration extension for pi — auto-diagnostics on edit, 6 LSP tools, auto-install, persistent servers with 5-min idle timeout, 33 language support",
+  "description": "LSP integration extension for pi — auto-diagnostics on edit, 11 LSP tools, auto-install, persistent servers with 5-min idle timeout, 33 language support",
   "private": true,
   "scripts": {
     "lint": "eslint src/",

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockExtensionApi, getTool } from "../helpers/mock-extension-api.js";
-import { registerFindReferencesTool } from "../../src/tools/find_references.js";
+import { registerRenameSymbolTool } from "../../src/tools/rename_symbol.js";
 
-describe("find_references tool integration", () => {
+describe("rename_symbol tool integration", () => {
   let pi: ReturnType<typeof createMockExtensionApi>;
   let mockManager: any;
 
@@ -10,26 +10,27 @@ describe("find_references tool integration", () => {
     pi = createMockExtensionApi();
     mockManager = {
       getClientForConfig: vi.fn().mockResolvedValue({
-        findReferences: vi.fn().mockResolvedValue([]),
+        prepareRename: vi.fn().mockResolvedValue(null),
+        rename: vi.fn().mockResolvedValue({}),
       }),
       ensureFileOpen: vi.fn().mockResolvedValue(undefined),
       getStatus: vi.fn().mockReturnValue([]),
       getClientMap: vi.fn().mockReturnValue(new Map()),
     };
-    registerFindReferencesTool(pi as any, () => mockManager, () => "/test/cwd");
+    registerRenameSymbolTool(pi as any, () => mockManager, () => "/test/cwd");
   });
 
   it("should register tool with correct name", () => {
-    const tool = getTool(pi, "find_references");
+    const tool = getTool(pi, "rename_symbol");
     expect(tool).toBeDefined();
-    expect(tool.name).toBe("find_references");
+    expect(tool.name).toBe("rename_symbol");
   });
 
   it("should return error for unsupported file type", async () => {
-    const tool = getTool(pi, "find_references");
+    const tool = getTool(pi, "rename_symbol");
     const result = await tool.execute(
       "call-1",
-      { file: "data.csv", line: 1, column: 1 },
+      { file: "data.csv", line: 1, column: 1, newName: "newName" },
       undefined,
       undefined,
       { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,

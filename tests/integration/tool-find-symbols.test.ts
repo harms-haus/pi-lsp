@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockExtensionApi, getTool } from "../helpers/mock-extension-api.js";
-import { registerFindReferencesTool } from "../../src/tools/find_references.js";
+import { registerFindSymbolsTool } from "../../src/tools/find_symbols.js";
 
-describe("find_references tool integration", () => {
+describe("find_symbols tool integration", () => {
   let pi: ReturnType<typeof createMockExtensionApi>;
   let mockManager: any;
 
@@ -10,30 +10,29 @@ describe("find_references tool integration", () => {
     pi = createMockExtensionApi();
     mockManager = {
       getClientForConfig: vi.fn().mockResolvedValue({
-        findReferences: vi.fn().mockResolvedValue([]),
+        workspaceSymbol: vi.fn().mockResolvedValue([]),
       }),
-      ensureFileOpen: vi.fn().mockResolvedValue(undefined),
-      getStatus: vi.fn().mockReturnValue([]),
       getClientMap: vi.fn().mockReturnValue(new Map()),
     };
-    registerFindReferencesTool(pi as any, () => mockManager, () => "/test/cwd");
+    registerFindSymbolsTool(pi as any, () => mockManager, () => "/test/cwd");
   });
 
   it("should register tool with correct name", () => {
-    const tool = getTool(pi, "find_references");
+    const tool = getTool(pi, "find_symbols");
     expect(tool).toBeDefined();
-    expect(tool.name).toBe("find_references");
+    expect(tool.name).toBe("find_symbols");
   });
 
-  it("should return error for unsupported file type", async () => {
-    const tool = getTool(pi, "find_references");
+  it("should return error when no query provided", async () => {
+    const tool = getTool(pi, "find_symbols");
     const result = await tool.execute(
       "call-1",
-      { file: "data.csv", line: 1, column: 1 },
+      { query: "" },
       undefined,
       undefined,
       { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
     );
     expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Please provide a symbol query");
   });
 });

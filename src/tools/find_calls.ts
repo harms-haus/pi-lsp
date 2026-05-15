@@ -1,5 +1,5 @@
 /**
- * lsp_call_hierarchy tool: Show incoming/outgoing calls for a function
+ * find_calls tool: Show incoming/outgoing calls for a function
  */
 
 import { Type } from "typebox";
@@ -14,18 +14,18 @@ const Schema = Type.Object({
   column: Type.Number({ description: "Column number (1-indexed)" }),
 });
 
-export function registerCallHierarchyTool(
+export function registerFindCallsTool(
   pi: ExtensionAPI,
   getManager: () => LspManager | null,
   getCwd: () => string,
 ): void {
   pi.registerTool({
-    name: "lsp_call_hierarchy",
-    label: "LSP Call Hierarchy",
-    description: "List call hierarchies for a function at the given position. Shows incoming calls (who calls this) and outgoing calls (what this calls).",
+    name: "find_calls",
+    label: "Find Calls",
+    description: "List callers and callees for a function at the given position. Shows incoming calls (who calls this) and outgoing calls (what this calls).",
     promptSnippet: "Show what calls a function and what it calls",
     promptGuidelines: [
-      "Use lsp_call_hierarchy with file path, line, and column on a function/method to see its callers and callees.",
+      "Use find_calls with file path, line, and column on a function/method to see its callers and callees.",
       "Line and column are 1-indexed.",
     ],
     parameters: Schema,
@@ -68,7 +68,7 @@ export function registerCallHierarchyTool(
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP call hierarchy item is loosely typed, need runtime checks
           const uri = node.uri ?? "";
           const fp = uriToFilePath(uri);
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP call hierarchy item is loosely typed, need optional access
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP call hierarchy item is loosely typed, need runtime checks
           const line = node.range?.start?.line ? node.range.start.line + 1 : "?";
           const ranges = (call.fromRanges ?? []).map((r) => `    at line ${r.start.line + 1}`).join("\n");
           return `  ${name} — ${fp}:${line}\n${ranges}`;

@@ -278,4 +278,17 @@ export class LspManager {
     return this.clientMap;
   }
 
+  /** Get all cached diagnostics across all running servers */
+  getAllDiagnostics(): Map<string, Diagnostic[]> {
+    const result = new Map<string, Diagnostic[]>();
+    for (const server of this.state.servers.values()) {
+      for (const [uri, diags] of server.diagnostics) {
+        const existing = result.get(uri) ?? [];
+        existing.push(...diags);
+        result.set(uri, existing);
+      }
+    }
+    return result;
+  }
+
 }
