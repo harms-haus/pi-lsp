@@ -26,9 +26,9 @@ Key settings:
 | `setupFiles` | `tests/setup.ts` | Global mocking runs before every test file |
 | `globals` | `true` | `describe`, `it`, `expect`, `vi`, etc. are globally available |
 
-**Current status:** 96 passing, 7 skipped (103 total) across 11 test files.
+**Current status:** 106 passing, 7 skipped (113 total) across 16 test files.
 
-The 7 skipped tests fall into two categories:
+The 7 skipped tests fall into three categories:
 - **5 in `lsp-client.test.ts`** — require a full process mock integration (request/response lifecycle, timeouts). Currently blocked by the global `child_process` mock.
 - **1 in `language-config.test.ts`** — `isServerInstalled` timeout handling, which requires async delay testing.
 - **1 in `tool-diagnostics.test.ts`** — requires full integration with `languageFromPath` without timing out.
@@ -158,7 +158,7 @@ const result = await tool.execute("call-1", { file: "test.ts" }, ...);
 
 ## Unit Tests
 
-### `tests/unit/shared.test.ts` (20 tests, all passing)
+### `tests/unit/shared.test.ts` (28 tests, all passing)
 
 Tests pure utility functions from `src/tools/shared.js`:
 
@@ -170,7 +170,7 @@ Tests pure utility functions from `src/tools/shared.js`:
 | `uriToFilePath` | `uriToFilePath()` | Standard `file://` URIs, URL-encoded characters (spaces, slashes), empty URIs, query strings |
 | `filePathToUri` | `filePathToUri()` | Standard paths, special character encoding (spaces → `%20`) |
 
-### `tests/unit/language-config.test.ts` (24 tests, 23 passing, 1 skipped)
+### `tests/unit/language-config.test.ts` (31 tests, 30 passing, 1 skipped)
 
 Tests `src/language-config.js`:
 
@@ -180,7 +180,7 @@ Tests `src/language-config.js`:
 | `getConfigForExtension` | `getConfigForExtension()` | Returns full config for `.ts`/`.py`, `undefined` for unknown, verifies all 7 config fields are present |
 | `isServerInstalled` | `isServerInstalled()` | Success case, failure case, thrown exception case, verifies correct `detectCommand` is called with 10s timeout. **Skipped:** timeout handling (requires async delay) |
 
-### `tests/unit/lsp-client.test.ts` (11 tests, 6 passing, 5 skipped)
+### `tests/unit/lsp-client.test.ts` (12 tests, 7 passing, 5 skipped)
 
 Tests JSON-RPC message parsing in `LspClient` by calling the private `handleData()` method directly via `(client as any).handleData(...)`:
 
@@ -206,7 +206,7 @@ Smoke tests for `LspManager` class API surface:
 
 Uses a 60-second idle timeout for deterministic cleanup in `afterEach` via `await manager.stopAll()`.
 
-### `tests/unit/diagnostics.test.ts` (11 tests, all passing)
+### `tests/unit/diagnostics.test.ts` (10 tests, all passing)
 
 Tests `registerDiagnosticsHook()` from `src/diagnostics.js`, which registers `tool_result` and `turn_end` event handlers on the Pi API:
 
@@ -239,14 +239,19 @@ All integration tests follow the **same pattern**:
 
 ### Test Files
 
-| File | Tool | Mocked Client Methods | Error Trigger |
-|------|------|----------------------|---------------|
-| `tool-diagnostics.test.ts` | `lsp_diagnostics` | `getDiagnostics`, `ensureFileOpen` | Unsupported extension (`.csv`) |
-| `tool-find-references.test.ts` | `lsp_find_references` | `findReferences`, `ensureFileOpen` | Unsupported extension (`.csv`) |
-| `tool-goto-definition.test.ts` | `lsp_goto_definition` | `gotoDefinition`, `ensureFileOpen` | Unsupported extension (`.csv`) |
-| `tool-refactor-symbol.test.ts` | `lsp_refactor_symbol` | `prepareRename`, `rename` | Unsupported extension (`.csv`) |
-| `tool-find-symbol.test.ts` | `lsp_find_symbol` | `workspaceSymbol` | Empty query (`""`) |
-| `tool-call-hierarchy.test.ts` | `lsp_call_hierarchy` | `prepareCallHierarchy`, `incomingCalls`, `outgoingCalls` | Unsupported extension (`.csv`) |
+| File | Tool | Mocked Client Methods |
+|------|------|----------------------|
+| `tool-diagnostics.test.ts` | `lsp_diagnostics` | `getDiagnostics`, `ensureFileOpen` |
+| `tool-find-references.test.ts` | `find_references` | `findReferences`, `ensureFileOpen` |
+| `tool-find-definition.test.ts` | `find_definition` | `gotoDefinition`, `ensureFileOpen` |
+| `tool-rename-symbol.test.ts` | `rename_symbol` | `prepareRename`, `rename`, `ensureFileOpen` |
+| `tool-find-symbols.test.ts` | `find_symbols` | `workspaceSymbol` |
+| `tool-find-calls.test.ts` | `find_calls` | `prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`, `ensureFileOpen` |
+| `tool-find-document-symbols.test.ts` | `find_document_symbols` | `documentSymbol`, `ensureFileOpen` |
+| `tool-hover.test.ts` | `hover` | `hover`, `ensureFileOpen` |
+| `tool-find-implementations.test.ts` | `find_implementations` | `findImplementations`, `ensureFileOpen` |
+| `tool-find-type-definition.test.ts` | `find_type_definition` | `findTypeDefinition`, `ensureFileOpen` |
+| `tool-find-type-hierarchy.test.ts` | `find_type_hierarchy` | `prepareTypeHierarchy`, `ensureFileOpen` |
 
 The mock manager for most tools includes:
 
@@ -256,10 +261,10 @@ mockManager = {
   ensureFileOpen: vi.fn().mockResolvedValue(undefined),
   getStatus: vi.fn().mockReturnValue([]),
   getClientMap: vi.fn().mockReturnValue(new Map()),
-};
+});
 ```
 
-`lsp_find_symbol` omits `ensureFileOpen` and `getStatus` since it doesn't operate on a specific file.
+`find_symbols` omits `ensureFileOpen` and `getStatus` since it operates on workspace-level symbol search rather than a specific file.
 
 ---
 

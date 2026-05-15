@@ -8,6 +8,17 @@ This document is a reference for contributors implementing or modifying LSP tool
 - [executePreamble — Shared Initialization](#executepreamble--shared-initialization)
 - [Tool Result Format](#tool-result-format)
 - [Per-Tool Implementation Details](#per-tool-implementation-details)
+  - [lsp_diagnostics](#lsp_diagnostics)
+  - [find_references](#find_references)
+  - [find_definition](#find_definition)
+  - [find_symbols](#find_symbols)
+  - [find_calls](#find_calls)
+  - [rename_symbol](#rename_symbol)
+  - [find_document_symbols](#find_document_symbols)
+  - [hover](#hover)
+  - [find_implementations](#find_implementations)
+  - [find_type_definition](#find_type_definition)
+  - [find_type_hierarchy](#find_type_hierarchy)
 - [Shared Utilities](#shared-utilities)
 
 ---
@@ -81,7 +92,11 @@ async execute(
 
 ## executePreamble — Shared Initialization
 
-Five of the six tools share a common initialization sequence via `executePreamble` (from `src/tools/shared.ts`). This function handles the boilerplate that every file-based tool needs.
+Ten of the eleven tools share a common initialization sequence via `executePreamble` (from `src/tools/shared.ts`). This function handles the boilerplate that every file-based tool needs.
+
+The exceptions are:
+- **`find_symbols`** — operates workspace-wide with its own server selection strategy
+- **`lsp_diagnostics` in workspace mode** — scans all open files across all servers instead of a single file
 
 ### Flow
 
@@ -128,8 +143,6 @@ async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
   // ... tool-specific logic
 }
 ```
-
-The `find_symbol` tool does **not** use the preamble because it is workspace-scoped (no single file to open) and has special server-selection logic.
 
 ---
 
@@ -183,31 +196,37 @@ return toolError("Failed to find definition: server returned null", { file: "src
 ### lsp_diagnostics
 
 **File:** `src/tools/diagnostics.ts`  
-**Purpose:** Retrieve LSP diagnostics (errors, warnings, info messages) for a file.
+**Registration:** `registerDiagnosticsTool`  
+**Purpose:** Retrieve LSP diagnostics (errors, warnings, info messages) for a file or scan the entire workspace.
 
 **Parameters:**
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `file` | `string` | Path to the file to check |
+| `file` | `string?` | Path to the file to check (required unless `workspace=true`) |
+| `workspace` | `boolean?` | If `true`, scans all open files across all running LSP servers |
 | `refresh` | `boolean?` | If `true`, forces the server to re-analyze the file |
 
 **LSP Methods Sent:**
 
 | Method | Direction | Notes |
 |--------|-----------|-------|
-| `textDocument/didOpen` | notification → | Sent by preamble |
+| `textDocument/didOpen` | notification → | Sent by preamble (file mode only) |
 | `textDocument/diagnostic` | request ↔ | LSP 3.17 pull-model diagnostics (30s timeout) |
 
 **Core Logic:**
 
 ```ts
+// File mode
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
 const diagnostics = await manager.getDiagnostics(filePath, params.refresh ?? false);
-const errorCount = diagnostics.filter((d) => d.severity === 1).length;
-const warningCount = diagnostics.filter((d) => d.severity === 2).length;
+
+// Workspace mode (no preamble)
+const allDiags = manager.getAllDiagnostics();
+// Iterates over all URIs with diagnostics across all servers
 ```
 
-**Output Format:**
+**Output Format (file mode):**
 
 ```
 Diagnostics for src/index.ts (typescript):
@@ -218,16 +237,33 @@ Diagnostics for src/index.ts (typescript):
   Error: 42:12: [tsserver] Type 'string' is not assignable to type 'number' (2322)
 ```
 
+**Output Format (workspace mode):**
+
+```
+Workspace diagnostics:
+3 file(s), 5 error(s), 2 warning(s), 1 info message(s)
+
+/home/project/src/index.ts (2 error(s), 0 warning(s), 0 info):
+  Error: 10:5: [tsserver] Cannot find name 'foo' (2304)
+  Error: 42:12: [tsserver] Type 'string' is not assignable to type 'number' (2322)
+
+/home/project/src/utils.ts (3 error(s), 2 warning(s), 1 info):
+  ...
+```
+
 **Special Behaviors:**
 - Severity 1 = Error, 2 = Warning, 3 = Info, 4 = Hint (mapped via `SEVERITY_NAMES`)
 - The `refresh` flag triggers a fresh `textDocument/diagnostic` request rather than returning cached diagnostics
-- Diagnostics are cached on the `LspServerInstance` and updated via `publishDiagnostics` notifications from the server
+- Workspace mode uses `manager.getAllDiagnostics()` which returns cached diagnostics from `publishDiagnostics` notifications — it does not trigger re-analysis
+- In workspace mode, neither `file` nor `executePreamble` is used
+- If neither `file` nor `workspace=true` is provided, returns an error
 
 ---
 
-### lsp_find_references
+### find_references
 
-**File:** `src/tools/find-references.ts`  
+**File:** `src/tools/find_references.ts`  
+**Registration:** `registerFindReferencesTool`  
 **Purpose:** Find all locations where a symbol at the given position is referenced.
 
 **Parameters:**
@@ -248,6 +284,7 @@ Diagnostics for src/index.ts (typescript):
 **Core Logic:**
 
 ```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
 const result = await client.findReferences(uri, params.line - 1, params.column - 1);
 const locations = Array.isArray(result)
   ? result.map((loc) => ({
@@ -278,9 +315,10 @@ References found: 5
 
 ---
 
-### lsp_goto_definition
+### find_definition
 
-**File:** `src/tools/goto-definition.ts`  
+**File:** `src/tools/find_definition.ts`  
+**Registration:** `registerFindDefinitionTool`  
 **Purpose:** Find the definition location(s) of the symbol at the given position.
 
 **Parameters:**
@@ -301,6 +339,7 @@ References found: 5
 **Core Logic:**
 
 ```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
 const result = await client.gotoDefinition(uri, params.line - 1, params.column - 1);
 let locations: { uri: string; line: number; col: number }[] = [];
 
@@ -331,9 +370,174 @@ Definition found: 1 location(s)
 
 ---
 
-### lsp_refactor_symbol
+### find_symbols
 
-**File:** `src/tools/refactor-symbol.ts`  
+**File:** `src/tools/find_symbols.ts`  
+**Registration:** `registerFindSymbolsTool`  
+**Purpose:** Search for symbols (functions, classes, variables, etc.) across the entire workspace by fuzzy name match, optionally filtered by symbol kind.
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `query` | `string` | Fuzzy symbol name to search for |
+| `kind` | `string?` | Filter by symbol kind (e.g. `"class"`, `"function"`, `"interface"`, `"enum"`). Case-insensitive. |
+
+**LSP Methods Sent:**
+
+| Method | Direction | Notes |
+|--------|-----------|-------|
+| `workspace/symbol` | request ↔ | 30s timeout; fuzzy match handled by server |
+
+**Core Logic (server selection):**
+
+```ts
+// This tool does NOT use executePreamble. It selects a server differently:
+
+// 1. Prefer TypeScript server (best workspace symbol support)
+const tsConfig = LANGUAGE_SERVERS.find((c) => c.language === "typescript");
+if (tsConfig && await isServerInstalled(tsConfig)) {
+  client = await manager.getClientForConfig(tsConfig);
+}
+
+// 2. Fall back to any running server
+if (!client) {
+  for (const serverConfig of LANGUAGE_SERVERS) {
+    const c = manager.getClientMap().get(serverConfig.language);
+    if (c) { client = c; break; }
+  }
+}
+
+// 3. Scan workspace for source files and start a matching server
+if (!client) {
+  const files = execFileSync("find", [cwd, "-maxdepth", "3", "-type", "f", /* extensions */]);
+  // ... detect language from first found file, install if needed, start server
+}
+
+// 4. Perform the search (with optional kind filtering)
+const result = await client.workspaceSymbol(params.query);
+if (params.kind) {
+  const kindNum = parseSymbolKind(params.kind);
+  if (kindNum !== undefined) {
+    filtered = symbols.filter(s => s.kind === kindNum);
+  }
+}
+```
+
+**Output Format:**
+
+```
+Symbols matching "UserModel": 12
+
+  UserModel [models] (Class) — /home/project/src/models/user.ts:10
+  createUser [services] (Function) — /home/project/src/services/user.ts:45
+  IUserModel (Interface) — /home/project/src/types/user.ts:5
+  ... and 9 more
+```
+
+**With kind filter:**
+
+```
+Symbols matching "User" (kind: class): 3
+
+  UserModel (Class) — /home/project/src/models/user.ts:10
+  UserStore (Class) — /home/project/src/stores/user.ts:5
+  UserFactory (Class) — /home/project/src/factory.ts:12
+```
+
+**Special Behaviors:**
+- **No preamble** — operates workspace-wide with its own server selection strategy: prefers TypeScript, falls back to any running server, then tries to start one by scanning the workspace
+- The `kind` parameter accepts either a number (e.g. `"5"`) or a name (e.g. `"class"`, `"Function"`). Parsing is handled by `parseSymbolKind` from `shared.ts`, which does a reverse lookup in `SYMBOL_KIND_BY_NAME`
+- If an unrecognized `kind` string is provided, filtering is silently skipped and all results are returned
+- Results capped at `MAX_SYMBOL_RESULTS` (50) in display output; the full count is shown
+- Uses `SYMBOL_KIND_NAMES` to convert numeric LSP SymbolKind values to readable names
+- Query must be at least 1 character; returns an error for empty queries
+
+---
+
+### find_calls
+
+**File:** `src/tools/find_calls.ts`  
+**Registration:** `registerFindCallsTool`  
+**Purpose:** Show incoming calls (who calls this function) and outgoing calls (what this function calls) for a function/method.
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `file` | `string` | Path to the file |
+| `line` | `number` | Line number (1-indexed) |
+| `column` | `number` | Column number (1-indexed) |
+
+**LSP Methods Sent:**
+
+| Method | Direction | Notes |
+|--------|-----------|-------|
+| `textDocument/didOpen` | notification → | Sent by preamble |
+| `textDocument/prepareCallHierarchy` | request ↔ | Returns `CallHierarchyItem[]` for the position |
+| `callHierarchy/incomingCalls` | request ↔ | Called on each item from prepare |
+| `callHierarchy/outgoingCalls` | request ↔ | Called on each item from prepare |
+
+**Core Logic:**
+
+```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+const prepareResult = await client.prepareCallHierarchy(uri, params.line - 1, params.column - 1);
+const items = Array.isArray(prepareResult) ? prepareResult : (prepareResult ? [prepareResult] : []);
+
+if (items.length === 0) {
+  return { content: [{ type: "text", text: "No call hierarchy available at this position..." }], details: { file: params.file } };
+}
+
+const item = items[0];  // use first match
+
+let incomingCalls: any[] = [];
+let outgoingCalls: any[] = [];
+
+try {
+  const incoming = await client.incomingCalls(item);
+  incomingCalls = Array.isArray(incoming) ? incoming : [];
+} catch { /* not supported by this server */ }
+
+try {
+  const outgoing = await client.outgoingCalls(item);
+  outgoingCalls = Array.isArray(outgoing) ? outgoing : [];
+} catch { /* not supported by this server */ }
+```
+
+**Output Format:**
+
+```
+Call hierarchy for "processData" in src/index.ts:42:10
+
+─── Incoming Calls (2) ───
+  main — /home/project/src/main.ts:5
+    at line 5
+    at line 12
+
+  runTests — /home/project/tests/index.ts:20
+    at line 20
+
+─── Outgoing Calls (3) ───
+  validateInput — /home/project/src/utils.ts:15
+
+  transform — /home/project/src/transform.ts:8
+
+  saveToDb — /home/project/src/db.ts:30
+```
+
+**Special Behaviors:**
+- Each call direction (`incomingCalls` / `outgoingCalls`) is wrapped in its own try/catch — some servers support one but not the other
+- Uses the **first** `CallHierarchyItem` from `prepareCallHierarchy`; if multiple items are returned, only the first is analyzed
+- `fromRanges` in incoming calls indicates the specific call site positions within the calling function
+- Returns a "no call hierarchy" message (not an error) if the cursor is not on a callable symbol
+
+---
+
+### rename_symbol
+
+**File:** `src/tools/rename_symbol.ts`  
+**Registration:** `registerRenameSymbolTool`  
 **Purpose:** Rename a symbol across the entire workspace. Returns a unified diff patch — does **not** apply changes automatically.
 
 **Parameters:**
@@ -356,6 +560,8 @@ Definition found: 1 location(s)
 **Core Logic:**
 
 ```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+
 // Step 1: Try to determine the old symbol name
 const prepareResult = await client.prepareRename(uri, params.line - 1, params.column - 1);
 
@@ -395,7 +601,7 @@ Patch:
 +++ b/src/utils.ts
 @@ -23,1 +23,1 @@
 -export function oldFunctionName() {
-+export function newFunctionName() {
++export function newFunctionName()
 ```
 
 Use the edit tool to apply these changes.
@@ -410,80 +616,73 @@ Use the edit tool to apply these changes.
   3. Regex extraction of the word at cursor position (`/[\w$]+/`)
 - Edits are sorted in reverse order (bottom-to-top, right-to-left) before applying to avoid offset corruption
 - Falls back to a synthetic "new file" diff if the original file cannot be read
+- Skips files outside the workspace root with a `"skipped"` note in the patch
 
 ---
 
-### lsp_find_symbol
+### find_document_symbols
 
-**File:** `src/tools/find-symbol.ts`  
-**Purpose:** Search for symbols (functions, classes, variables, etc.) across the entire workspace by fuzzy name match.
+**File:** `src/tools/find_document_symbols.ts`  
+**Registration:** `registerFindDocumentSymbolsTool`  
+**Purpose:** Get a structured outline of all symbols (classes, functions, variables, etc.) defined in a single file. Useful for understanding file structure without reading the entire file.
 
 **Parameters:**
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `query` | `string` | Fuzzy symbol name to search for |
+| `file` | `string` | Path to the file to outline |
 
 **LSP Methods Sent:**
 
 | Method | Direction | Notes |
 |--------|-----------|-------|
-| `workspace/symbol` | request ↔ | 30s timeout; fuzzy match handled by server |
+| `textDocument/didOpen` | notification → | Sent by preamble |
+| `textDocument/documentSymbol` | request ↔ | Returns `DocumentSymbol[]` or `SymbolInformation[]` |
 
-**Core Logic (server selection):**
+**Core Logic:**
 
 ```ts
-// This tool does NOT use executePreamble. It selects a server differently:
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+const result = await client.documentSymbol(uri);
 
-// 1. Prefer TypeScript server (best workspace symbol support)
-const tsConfig = LANGUAGE_SERVERS.find((c) => c.language === "typescript");
-if (tsConfig) {
-  client = await manager.getClientForConfig(tsConfig);
+// DocumentSymbol has children (hierarchical); SymbolInformation is flat
+if ("children" in result[0]) {
+  formatted = formatDocumentSymbols(result as DocumentSymbol[], "", flat);
+} else {
+  formatted = formatSymbolInformationList(result as SymbolInformation[], flat);
 }
-
-// 2. Fall back to any running server
-if (!client) {
-  for (const serverConfig of LANGUAGE_SERVERS) {
-    const c = manager.getClientMap().get(serverConfig.language);
-    if (c) { client = c; break; }
-  }
-}
-
-// 3. Scan workspace for source files and start a matching server
-if (!client) {
-  const files = execFileSync("find", [cwd, "-maxdepth", "3", "-type", "f", /* extensions */]);
-  // ... detect language from first found file, install if needed, start server
-}
-
-// 4. Perform the search
-const result = await client.workspaceSymbol(params.query);
 ```
 
 **Output Format:**
 
 ```
-Symbols matching "UserModel": 12
+Document symbols for src/index.ts:
+8 symbols found
 
-  UserModel [models] (Class) — /home/project/src/models/user.ts:10
-  createUser [services] (Function) — /home/project/src/services/user.ts:45
-  IUserModel (Interface) — /home/project/src/types/user.ts:5
-  ... and 9 more
+Class App (line 5)
+  Method constructor (line 6)
+  Method initialize (line 12)
+  Function main (line 30)
+  Variable config (line 3)
+  Interface AppConfig (line 40)
+    Property port (line 41)
+    Property debug (line 42)
 ```
 
 **Special Behaviors:**
-- **No preamble** — this is the only tool that does not use `executePreamble`, because it operates workspace-wide rather than on a single file
-- Has its own **server selection strategy**: prefers TypeScript, falls back to any running server, then tries to start one by scanning the workspace
-- Results capped at `MAX_SYMBOL_RESULTS` (50) in display output; the full count is shown
-- Uses `SYMBOL_KIND_NAMES` to convert numeric LSP SymbolKind values to readable names
-- The `details.symbols` array always contains the first 50 results with `name`, `kind`, `uri`, and `line`
-- Query must be at least 1 character; returns an error for empty queries
+- Handles both `DocumentSymbol[]` (hierarchical, with `children` property) and `SymbolInformation[]` (flat) return types
+- `DocumentSymbol` results are rendered with indentation to reflect the symbol tree
+- `SymbolInformation` results are rendered as a flat list with 2-space indent
+- Returns a "no symbols found" message if the server returns an empty result
+- Only the `file` parameter is needed — no `line` or `column`
 
 ---
 
-### lsp_call_hierarchy
+### hover
 
-**File:** `src/tools/call-hierarchy.ts`  
-**Purpose:** Show incoming calls (who calls this function) and outgoing calls (what this function calls) for a function/method.
+**File:** `src/tools/hover.ts`  
+**Registration:** `registerHoverTool`  
+**Purpose:** Get type information, function signatures, and documentation for the symbol at a given position. Equivalent to hovering over a symbol in an IDE.
 
 **Parameters:**
 
@@ -498,60 +697,224 @@ Symbols matching "UserModel": 12
 | Method | Direction | Notes |
 |--------|-----------|-------|
 | `textDocument/didOpen` | notification → | Sent by preamble |
-| `textDocument/prepareCallHierarchy` | request ↔ | Returns `CallHierarchyItem[]` for the position |
-| `callHierarchy/incomingCalls` | request ↔ | Called on each item from prepare |
-| `callHierarchy/outgoingCalls` | request ↔ | Called on each item from prepare |
+| `textDocument/hover` | request ↔ | Returns `Hover` with type info, docs, and optional range |
 
 **Core Logic:**
 
 ```ts
-const prepareResult = await client.prepareCallHierarchy(uri, params.line - 1, params.column - 1);
-const items = Array.isArray(prepareResult) ? prepareResult : (prepareResult ? [prepareResult] : []);
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+const result = await client.hover(uri, params.line - 1, params.column - 1);
 
-if (items.length === 0) {
-  return { content: [{ type: "text", text: "No call hierarchy available..." }], details: { file: params.file } };
+if (!result) {
+  return { content: [{ type: "text", text: "No hover information available at this position." }], ... };
 }
 
-const item = items[0];  // use first match
-
-let incomingCalls: any[] = [];
-let outgoingCalls: any[] = [];
-
-try {
-  incomingCalls = await client.incomingCalls(item);
-} catch { /* not supported by this server */ }
-
-try {
-  outgoingCalls = await client.outgoingCalls(item);
-} catch { /* not supported by this server */ }
+const hoverContent = formatHoverContents(result.contents);
+// formatHoverContents handles: string, MarkupContent, MarkedString, and MarkedString[]
 ```
 
 **Output Format:**
 
 ```
-Call hierarchy for "processData" in src/index.ts:42:10
+Hover info at src/index.ts:10:5:
 
-─── Incoming Calls (2) ───
-  main — /home/project/src/main.ts:5
-    at line 5
-    at line 12
+```typescript
+function processData(input: string): Promise<Result>
+```
 
-  runTests — /home/project/tests/index.ts:20
-    at line 20
+Processes the input string and returns a Result object.
 
-─── Outgoing Calls (3) ───
-  validateInput — /home/project/src/utils.ts:15
+@param input - The string to process
+@returns A Promise resolving to Result
 
-  transform — /home/project/src/transform.ts:8
-
-  saveToDb — /home/project/src/db.ts:30
+Range: line 10:5 to line 10:18
 ```
 
 **Special Behaviors:**
-- Each call direction (`incomingCalls` / `outgoingCalls`) is wrapped in its own try/catch — some servers support one but not the other
-- Uses the **first** `CallHierarchyItem` from `prepareCallHierarchy`; if multiple items are returned, only the first is analyzed
-- `fromRanges` in incoming calls indicates the specific call site positions within the calling function
-- Returns a "no call hierarchy" message (not an error) if the cursor is not on a callable symbol
+- The `formatHoverContents` helper normalizes three LSP content formats:
+  - Plain `string` — returned as-is
+  - `MarkupContent` (`{ kind, value }`) — returns the `value` field
+  - `MarkedString` (`{ language, value }`) — wraps in a fenced code block
+  - `MarkedString[]` — joins each entry with blank lines
+- Returns "no hover information" (not an error) if the server returns `null`
+- If the hover response includes a `range`, it is displayed as a 1-indexed line/column span
+- Useful for quick type inspection without navigating to the definition
+
+---
+
+### find_implementations
+
+**File:** `src/tools/find_implementations.ts`  
+**Registration:** `registerFindImplementationsTool`  
+**Purpose:** Find all concrete implementations of an interface, abstract class, or type at the given position.
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `file` | `string` | Path to the file |
+| `line` | `number` | Line number (1-indexed) |
+| `column` | `number` | Column number (1-indexed) |
+
+**LSP Methods Sent:**
+
+| Method | Direction | Notes |
+|--------|-----------|-------|
+| `textDocument/didOpen` | notification → | Sent by preamble |
+| `textDocument/implementation` | request ↔ | Returns `Location[]` of implementations |
+
+**Core Logic:**
+
+```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+const result = await client.findImplementations(uri, params.line - 1, params.column - 1);
+const locations = Array.isArray(result)
+  ? result.map((loc) => ({
+      uri: loc.uri,
+      line: loc.range.start.line + 1,
+      col: loc.range.start.character + 1,
+    }))
+  : [];
+```
+
+**Output Format:**
+
+```
+Implementations found: 3
+
+  /home/project/src/impl/sql-user-store.ts:10:1
+  /home/project/src/impl/mock-user-store.ts:8:1
+  /home/project/src/impl/redis-user-store.ts:15:1
+```
+
+**Special Behaviors:**
+- Works best on interface/type definitions — place cursor on the type name itself
+- Returns `(none)` if no implementations are found
+- Same 1-indexed → 0-indexed → 1-indexed position conversion as other position-based tools
+- Not all language servers support `textDocument/implementation` — returns empty results if unsupported
+
+---
+
+### find_type_definition
+
+**File:** `src/tools/find_type_definition.ts`  
+**Registration:** `registerFindTypeDefinitionTool`  
+**Purpose:** Find where the **type** of a symbol is defined, as opposed to where the symbol itself is assigned. For example, on `const user: User`, `find_definition` goes to the variable assignment while `find_type_definition` goes to the `User` class or interface.
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `file` | `string` | Path to the file |
+| `line` | `number` | Line number (1-indexed) |
+| `column` | `number` | Column number (1-indexed) |
+
+**LSP Methods Sent:**
+
+| Method | Direction | Notes |
+|--------|-----------|-------|
+| `textDocument/didOpen` | notification → | Sent by preamble |
+| `textDocument/typeDefinition` | request ↔ | Returns type definition locations |
+
+**Core Logic:**
+
+```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+const result = await client.findTypeDefinition(uri, params.line - 1, params.column - 1);
+let locations: { uri: string; line: number; col: number }[] = [];
+
+if (Array.isArray(result)) {
+  locations = result.map((loc) => ({
+    uri: loc.uri,
+    line: loc.range.start.line + 1,
+    col: loc.range.start.character + 1,
+  }));
+} else if (result && typeof result === "object" && "uri" in result) {
+  locations = [{ uri: result.uri, line: result.range.start.line + 1, col: result.range.start.character + 1 }];
+}
+```
+
+**Output Format:**
+
+```
+Type definition found: 1 location(s)
+
+  /home/project/src/types/user.ts:3:1
+```
+
+**Special Behaviors:**
+- Handles both `Location` (single object) and `Location[]` (array) return types
+- Complements `find_definition`: use `find_definition` to find where a variable is declared, use `find_type_definition` to find where its type is defined
+- Returns `(none)` when the symbol has no type definition (e.g., `any`, `unknown`, or inferred primitives)
+
+---
+
+### find_type_hierarchy
+
+**File:** `src/tools/find_type_hierarchy.ts`  
+**Registration:** `registerFindTypeHierarchyTool`  
+**Purpose:** Show the inheritance chain (parent types and/or child types) for a class or type at the given position.
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `file` | `string` | Path to the file |
+| `line` | `number` | Line number (1-indexed) |
+| `column` | `number` | Column number (1-indexed) |
+| `direction` | `string?` | `"supertypes"` (parents), `"subtypes"` (children), or omitted for both. Default: both |
+| `depth` | `number?` | Maximum depth to traverse. Default: 2 |
+
+**LSP Methods Sent:**
+
+| Method | Direction | Notes |
+|--------|-----------|-------|
+| `textDocument/didOpen` | notification → | Sent by preamble |
+| `textDocument/prepareTypeHierarchy` | request ↔ | Returns `TypeHierarchyItem[]` for the position |
+| `typeHierarchy/supertypes` | request ↔ | Returns parent types up to `depth` |
+| `typeHierarchy/subtypes` | request ↔ | Returns child types up to `depth` |
+
+**Core Logic:**
+
+```ts
+const preamble = await executePreamble(params.file, getCwd(), getManager, ctx.ui);
+
+try {
+  prepareResult = await client.prepareTypeHierarchy(uri, params.line - 1, params.column - 1);
+} catch {
+  return { content: [{ type: "text", text: "Type hierarchy is not supported..." }] };
+}
+
+const item = items[0];
+const direction = params.direction ?? "both";
+
+if (direction === "supertypes" || direction === "both") {
+  supertypes = await client.typeHierarchySupertypes(item, params.depth ?? 2);
+}
+if (direction === "subtypes" || direction === "both") {
+  subtypes = await client.typeHierarchySubtypes(item, params.depth ?? 2);
+}
+```
+
+**Output Format:**
+
+```
+Type hierarchy for "UserService" in src/services/user.ts:10:1
+
+─── Supertypes (2) ───
+  ServiceInterface (Interface) — /home/project/src/interfaces/service.ts:5
+  EventEmitter (Class) — /home/project/node_modules/events/events.d.ts:10
+
+─── Subtypes (1) ───
+  AdminUserService (Class) — /home/project/src/services/admin-user.ts:8
+```
+
+**Special Behaviors:**
+- Each direction (`supertypes` / `subtypes`) is wrapped in its own try/catch — some servers support one but not the other
+- If `prepareTypeHierarchy` throws (unsupported server), returns a clear "not supported" message — not an error
+- Uses the **first** `TypeHierarchyItem` from the prepare result
+- `depth` controls how many levels of the hierarchy to traverse; default is 2
+- `direction` can be `"supertypes"` to see only the parent chain, `"subtypes"` for descendants, or omitted for both
 
 ---
 
@@ -563,7 +926,7 @@ All shared helpers live in `src/tools/shared.ts`.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `resolveFile` | `(file: string, cwd: string) => string` | Converts relative paths to absolute. Passes through absolute paths unchanged. |
+| `resolveFile` | `(file: string, cwd: string) => string` | Converts relative paths to absolute. Validates that the resolved path is within the workspace to prevent path traversal. |
 | `uriToFilePath` | `(uri: string) => string` | Strips `file://` prefix and decodes URI components. |
 | `filePathToUri` | `(filePath: string) => string` | Converts an absolute file path to a `file://` URI using `pathToFileURL`. |
 
@@ -583,6 +946,23 @@ async function ensureServerInstalled(language: string, ui: ToolUI): Promise<bool
 
 Checks if the LSP server for `language` is installed. If not, prompts the user via `ui.confirm()`, runs the install command (with a 5-minute timeout), and verifies installation afterward. Returns `true` if the server is available (already installed or just installed), `false` otherwise.
 
+### Symbol Kind Parsing
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `parseSymbolKind` | `(kind: string) => number \| undefined` | Parses a kind name or number string into an LSP SymbolKind number. Accepts numeric strings (e.g. `"5"`) or names (e.g. `"class"`, `"Function"`, case-insensitive). Uses `SYMBOL_KIND_BY_NAME` for reverse lookup. |
+
+### Error Sanitization
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `sanitizeError` | `(err: unknown, context: string) => string` | Sanitizes an error for safe display. Strips common internal path patterns (home directories, `C:\Users\`, `/root/`) and prefixes with the provided context string. |
+
+```ts
+sanitizeError(new Error("ENOENT: /home/user/project/src/foo.ts"), "Failed to open")
+// → "Failed to open: ENOENT: ~/project/src/foo.ts"
+```
+
 ### Text/Diff Utilities
 
 | Function | Signature | Description |
@@ -594,9 +974,10 @@ Checks if the LSP server for `language` is installed. If not, prompts the user v
 
 | Constant | Value | Used By |
 |----------|-------|---------|
-| `MAX_SYMBOL_RESULTS` | `50` | `find-symbol` — caps displayed results |
-| `SEVERITY_NAMES` | `["?", "Error", "Warning", "Info", "Hint"]` | `diagnostics` — maps LSP severity numbers to names |
-| `SYMBOL_KIND_NAMES` | `Record<number, string>` | `find-symbol` — maps LSP SymbolKind numbers to names (1=File through 26=TypeParameter) |
+| `MAX_SYMBOL_RESULTS` | `50` | `find_symbols` — caps displayed results |
+| `SEVERITY_NAMES` | `["?", "Error", "Warning", "Info", "Hint"]` | `lsp_diagnostics` — maps LSP severity numbers to names |
+| `SYMBOL_KIND_NAMES` | `Record<number, string>` | `find_symbols`, `find_document_symbols`, `find_type_hierarchy` — maps LSP SymbolKind numbers to names (1=File through 26=TypeParameter) |
+| `SYMBOL_KIND_BY_NAME` | `Record<string, number>` | `find_symbols` — reverse lookup: kind name (lowercase) → SymbolKind number |
 
 ### ToolUI Interface
 

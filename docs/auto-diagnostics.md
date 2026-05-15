@@ -7,8 +7,8 @@ The auto-diagnostics subsystem automatically runs LSP diagnostics on files modif
 After the agent finishes a turn that includes file modifications, auto-diagnostics:
 
 1. Identifies which files were changed during the turn
-2. Notifies the LSP server about the changes
-3. Waits for diagnostic results
+2. Notifies the LSP server about the changes (all files in parallel)
+3. Waits once for the server to process diagnostics
 4. Reports errors and warnings via per-file UI notifications and an aggregated status bar indicator
 
 The subsystem is registered once at startup via `registerDiagnosticsHook(pi, manager)` in [`src/diagnostics.ts`](../src/diagnostics.ts).
@@ -34,12 +34,16 @@ Auto-diagnostics operates as an event pipeline driven by the pi extension API:
 ┌─────────────────────┐
 │   turn_end          │  ← diagnostics processing begins
 └─────────┬───────────┘
-          │ for each file:
-          │   1. languageFromPath() → skip if unrecognized
-          │   2. manager.onFileChanged() → send didOpen/didChange
-          │   3. DIAGNOSTICS_WAIT_MS delay
-          │   4. manager.getDiagnostics(refresh=true)
-          │   5. Per-file ctx.ui.notify() if issues found
+          │
+          ├─ Promise.all() → open all files in parallel
+          │   manager.onFileChanged() per file (didOpen/didChange)
+          │
+          ├─ single DIAGNOSTICS_WAIT_MS delay (1000 ms)
+          │   lets LSP server compute diagnostics for all files
+          │
+          ├─ sequential cache reads
+          │   manager.getDiagnostics(filePath, true) per file
+          │   per-file ctx.ui.notify() if issues found
           ▼
 ┌─────────────────────┐
 │   ctx.ui.setStatus  │  ← aggregated "pi-lint" status
@@ -52,41 +56,42 @@ Auto-diagnostics operates as an event pipeline driven by the pi extension API:
 | Step | Trigger | Behavior |
 |------|---------|----------|
 | **Collect** | `tool_result` for `write` or `edit` | Extracts the `path` from tool input, resolves it to an absolute path (relative to `ctx.cwd`), and adds it to a `Set<string>` |
-| **Turn end** | `turn_end` event | If `modifiedFiles` is non-empty, copies the set to a local array and clears it |
-| **Settle** | Immediate | Waits `DIAGNOSTICS_SETTLE_DELAY_MS` (500 ms) to let the LSP server process filesystem changes |
-| **Per-file check** | Loop over collected files | Calls `languageFromPath()` to filter unrecognized extensions, then `manager.onFileChanged()` to send `didOpen`/`didChange` notifications |
-| **Wait** | After each `onFileChanged` | Waits `DIAGNOSTICS_WAIT_MS` (1000 ms) for diagnostics to arrive from the server |
-| **Fetch** | After wait | Calls `manager.getDiagnostics(filePath, true)` — the `refresh=true` flag forces a pull-model request |
-| **Notify** | If issues found | Calls `ctx.ui.notify()` per file with severity-appropriate message |
-| **Status** | After all files processed | Calls `ctx.ui.setStatus("pi-lint", ...)` with aggregated counts |
+| **Turn end** | `turn_end` event | If `modifiedFiles` is non-empty, copies the set to a local array (`filesToCheck`), then clears the set |
+| **Filter** | Immediate | Filters `filesToCheck` through `languageFromPath()` — unrecognized extensions are silently dropped, producing `checkableFiles` |
+| **Open (parallel)** | `Promise.all()` over `checkableFiles` | Calls `manager.onFileChanged()` for every file concurrently — sends `didOpen`/`didChange` notifications to their respective LSP servers |
+| **Wait (single)** | After all opens complete | Waits `DIAGNOSTICS_WAIT_MS` (1000 ms) once — gives all LSP servers time to compute diagnostics across the batch |
+| **Read (sequential)** | Loop over `checkableFiles` | Calls `manager.getDiagnostics(filePath, true)` — `refresh=true` forces a pull-model request to get fresh results. Since diagnostics are already computed during the wait, these are fast reads. |
+| **Notify** | If issues found per file | Calls `ctx.ui.notify()` with severity-appropriate message |
+| **Status** | After all files processed | Calls `ctx.ui.setStatus("pi-lint", ...)` with aggregated error/warning counts |
 
-## Timing Constants
+## Timing Constant
 
-Two configurable delays control the diagnostic pipeline:
+A single configurable delay controls the diagnostic pipeline:
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `DIAGNOSTICS_SETTLE_DELAY_MS` | `500` ms | Initial pause after `turn_end` before processing begins, allowing the LSP server to pick up filesystem changes |
-| `DIAGNOSTICS_WAIT_MS` | `1000` ms | Wait after `onFileChanged()` for each file, giving the server time to compute and deliver diagnostics |
+| `DIAGNOSTICS_WAIT_MS` | `1000` ms | Single pause after all files are opened in parallel, allowing LSP servers to compute and deliver diagnostics before cache reads begin |
 
 ### Total Delay Formula
 
 For a turn that modifies **N** recognized files:
 
 ```
-total_delay = DIAGNOSTICS_SETTLE_DELAY_MS + (N × DIAGNOSTICS_WAIT_MS)
-            = 500 + (N × 1000) ms
+total_delay ≈ DIAGNOSTICS_WAIT_MS + (N × cache_read_time)
+            ≈ 1000 + (N × cache_read_time) ms
 ```
+
+Because file opens happen in **parallel** (not sequentially), the wait happens **once** (not per file). The cache reads in the final loop are fast — they pull from an in-memory cache that was populated during the 1000 ms wait.
 
 Examples:
 
 | Files modified | Approximate total delay |
 |----------------|------------------------|
-| 1 | ~1.5 s |
-| 3 | ~3.5 s |
-| 5 | ~5.5 s |
+| 1 | ~1.0 s |
+| 3 | ~1.0 s (plus a few ms for cache reads) |
+| 5 | ~1.0 s (plus a few ms for cache reads) |
 
-The per-file wait is **sequential** — each file's `onFileChanged()` → wait → `getDiagnostics()` chain completes before the next file begins. This ensures the LSP server isn't overwhelmed with concurrent requests but means multi-file turns take proportionally longer.
+The parallel open model means multi-file turns complete in roughly the same time as single-file turns — the only variable portion is the per-file cache read, which is a fast in-memory lookup with no network/server round-trip.
 
 ## Status Bar Integration
 
@@ -156,7 +161,17 @@ See [Supported Languages](../README.md#supported-languages) in the README for th
 All errors during the diagnostic pipeline are **silently swallowed**:
 
 ```typescript
-for (const filePath of filesToCheck) {
+// During parallel open:
+await Promise.all(
+  checkableFiles.map((filePath) =>
+    manager.onFileChanged(filePath).catch(() => {
+      /* ignore individual open failures */
+    }),
+  ),
+);
+
+// During sequential reads:
+for (const filePath of checkableFiles) {
   try {
     // ... diagnostics logic
   } catch {
@@ -177,6 +192,26 @@ The design prioritizes **non-interference**: auto-diagnostics should never preve
 ## Interaction with `lsp_diagnostics` Tool
 
 Auto-diagnostics and the manual `lsp_diagnostics` tool share the same underlying infrastructure in [`LspManager`](../src/lsp-manager.ts):
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | string | (optional) | Path to the file to check. Required unless `workspace=true`. |
+| `workspace` | boolean | `false` | Scan all open files across all running LSP servers. |
+| `refresh` | boolean | `false` | Force refresh diagnostics from the server (file mode only). |
+
+### Workspace Scanning Mode
+
+When `workspace=true` is passed to the `lsp_diagnostics` tool, it enters workspace scanning mode:
+
+- Calls `manager.getAllDiagnostics()` instead of the file-specific `executePreamble` → `getDiagnostics()` path
+- Aggregates diagnostics across **all** running LSP servers and all open files
+- Does **not** require a `file` parameter
+- Does **not** trigger server startup — reads only from the existing diagnostics cache
+- If neither `file` nor `workspace` is provided, the tool returns an error
+
+The workspace mode output includes a summary line with file count and per-severity totals, followed by per-file sections listing each diagnostic with its line number, severity, source, and message.
 
 ### Shared Diagnostics Cache
 
@@ -219,13 +254,13 @@ Auto-diagnostics (src/diagnostics.ts)          Manual tool (src/index.ts)
 ──────────────────────────────────────         ────────────────────────────
 turn_end event                                 Agent calls lsp_diagnostics
   │                                              │
-  ├─ manager.onFileChanged()                    ├─ manager.getDiagnostics(file)
-  │   (sends didOpen/didChange)                 │   (refresh=false by default)
+  ├─ Promise.all() → parallel open              ├─ manager.getDiagnostics(file)
+  │   manager.onFileChanged() per file          │   (refresh=false by default)
   │                                              │
-  ├─ 1000 ms wait                                ├─ Returns cached diagnostics
+  ├─ single 1000 ms wait                         ├─ Returns cached diagnostics
   │                                              │   (fast, no server request)
-  └─ manager.getDiagnostics(file, true)
-      (forces fresh pull-model request)
+  └─ sequential getDiagnostics(file, true)
+      (pull-model, refreshes cache)
 ```
 
-Both paths ultimately read from the same `server.diagnostics` cache. The difference is that auto-diagnostics proactively refreshes the cache after modifications, while the manual tool reads whatever is currently cached unless the user explicitly requests `refresh=true`.
+Both paths ultimately read from the same `server.diagnostics` cache. The difference is that auto-diagnostics proactively opens all modified files in parallel, waits once for the server to compute, then reads fresh results — while the manual tool reads whatever is currently cached unless the user explicitly requests `refresh=true`.

@@ -43,6 +43,15 @@ No build step is required. See [No Build Step](#no-build-step) below.
 
 Recommended workflow: keep `npm run test:watch` running in one terminal while editing, and run `npm run typecheck` before committing.
 
+## Test Suite
+
+The test suite consists of **113 tests across 16 files**: 106 passed, 7 skipped.
+
+| Layer | Files | Description |
+|-------|-------|-------------|
+| Unit | 5 | `diagnostics`, `language-config`, `lsp-client`, `lsp-manager`, `shared` |
+| Integration | 11 | One file per LSP tool (diagnostics, find_references, find_definition, find_symbols, find_calls, rename_symbol, find_document_symbols, hover, find_implementations, find_type_definition, find_type_hierarchy) |
+
 ## Project Structure
 
 ```
@@ -67,11 +76,16 @@ pi-lsp/
 │   └── tools/
 │       ├── shared.ts             # Shared tool utilities (position conversion, LSP request helpers)
 │       ├── diagnostics.ts        # lsp_diagnostics tool registration
-│       ├── find-references.ts    # lsp_find_references tool registration
-│       ├── refactor-symbol.ts    # lsp_refactor_symbol tool registration
-│       ├── goto-definition.ts    # lsp_goto_definition tool registration
-│       ├── find-symbol.ts        # lsp_find_symbol tool registration
-│       └── call-hierarchy.ts     # lsp_call_hierarchy tool registration
+│       ├── find_references.ts    # find_references tool registration
+│       ├── find_definition.ts    # find_definition tool registration
+│       ├── find_symbols.ts       # find_symbols tool registration
+│       ├── find_calls.ts         # find_calls tool registration
+│       ├── rename_symbol.ts      # rename_symbol tool registration
+│       ├── find_document_symbols.ts  # find_document_symbols tool registration
+│       ├── hover.ts              # hover tool registration
+│       ├── find_implementations.ts   # find_implementations tool registration
+│       ├── find_type_definition.ts   # find_type_definition tool registration
+│       └── find_type_hierarchy.ts    # find_type_hierarchy tool registration
 │
 ├── tests/
 │   ├── setup.ts                  # Vitest setup — mocks node:child_process globally
@@ -86,15 +100,20 @@ pi-lsp/
 │   │   ├── lsp-manager.test.ts   # Unit tests for server manager
 │   │   └── shared.test.ts        # Unit tests for shared utilities
 │   └── integration/
-│       ├── tool-call-hierarchy.test.ts   # Integration: call hierarchy tool
-│       ├── tool-diagnostics.test.ts      # Integration: diagnostics tool
-│       ├── tool-find-references.test.ts  # Integration: find references tool
-│       ├── tool-find-symbol.test.ts      # Integration: find symbol tool
-│       ├── tool-goto-definition.test.ts  # Integration: goto definition tool
-│       └── tool-refactor-symbol.test.ts  # Integration: refactor symbol tool
+│       ├── tool-diagnostics.test.ts          # Integration: diagnostics tool
+│       ├── tool-find-references.test.ts      # Integration: find references tool
+│       ├── tool-find-definition.test.ts      # Integration: find definition tool
+│       ├── tool-find-symbols.test.ts         # Integration: find symbols tool
+│       ├── tool-find-calls.test.ts           # Integration: call hierarchy tool
+│       ├── tool-rename-symbol.test.ts        # Integration: rename symbol tool
+│       ├── tool-find-document-symbols.test.ts  # Integration: find document symbols tool
+│       ├── tool-hover.test.ts                # Integration: hover tool
+│       ├── tool-find-implementations.test.ts   # Integration: find implementations tool
+│       ├── tool-find-type-definition.test.ts   # Integration: find type definition tool
+│       └── tool-find-type-hierarchy.test.ts    # Integration: find type hierarchy tool
 │
 └── skills/
-    └── lsp-tools/SKILL.md        # pi skill describing LSP tool usage patterns
+    └── scouting-and-debugging/SKILL.md  # pi skill describing LSP tool usage patterns
 ```
 
 ## TypeScript Configuration

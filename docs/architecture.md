@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-pi-lsp is a pi extension that integrates the Language Server Protocol (LSP) into the pi coding agent, providing language-aware tools (diagnostics, find-references, goto-definition, refactoring, symbol search, and call hierarchy) across 33+ languages. It manages persistent LSP server processes per language with idle timeout, communicates via JSON-RPC over stdio, and hooks into pi's event lifecycle for automatic diagnostics on file edits.
+pi-lsp is a pi extension that integrates the Language Server Protocol (LSP) into the pi coding agent, providing language-aware tools (diagnostics, find-references, find-definition, find-symbols, find-calls, rename-symbol, document-symbols, hover, find-implementations, find-type-definition, and find-type-hierarchy) across 33+ languages. It manages persistent LSP server processes per language with idle timeout, communicates via JSON-RPC over stdio, and hooks into pi's event lifecycle for automatic diagnostics on file edits.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -18,19 +18,24 @@ pi-lsp is a pi extension that integrates the Language Server Protocol (LSP) into
 │  │                                                                     │    │
 │  │  registerDiagnosticsTool(pi, getManager, getCwd)                    │    │
 │  │  registerFindReferencesTool(pi, getManager, getCwd)                 │    │
-│  │  registerRefactorSymbolTool(pi, getManager, getCwd)                 │    │
-│  │  registerGotoDefinitionTool(pi, getManager, getCwd)                 │    │
-│  │  registerFindSymbolTool(pi, getManager, getCwd)                     │    │
-│  │  registerCallHierarchyTool(pi, getManager, getCwd)                  │    │
+│  │  registerFindDefinitionTool(pi, getManager, getCwd)                 │    │
+│  │  registerFindSymbolsTool(pi, getManager, getCwd)                    │    │
+│  │  registerFindCallsTool(pi, getManager, getCwd)                      │    │
+│  │  registerRenameSymbolTool(pi, getManager, getCwd)                   │    │
+│  │  registerFindDocumentSymbolsTool(pi, getManager, getCwd)            │    │
+│  │  registerHoverTool(pi, getManager, getCwd)                          │    │
+│  │  registerFindImplementationsTool(pi, getManager, getCwd)            │    │
+│  │  registerFindTypeDefinitionTool(pi, getManager, getCwd)             │    │
+│  │  registerFindTypeHierarchyTool(pi, getManager, getCwd)              │    │
 │  └──────────┬──────────────────────────────────────────────────────────┘    │
-│             │ registers 6 tools + command                                   │
+│             │ registers 11 tools + command                                  │
 │             ▼                                                               │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                       diagnostics.ts (hook)                         │    │
 │  │                                                                     │    │
 │  │  pi.on("tool_result") ◄── write/edit detected ── track modifiedFiles│    │
-  │  ⚠ SEPARATE tool_result handler (see §4)                            │    │
-  │     (index.ts: publishLspStatus; diagnostics.ts: track modifiedFiles)│    │
+│  │  ⚠ SEPARATE tool_result handler (see §4)                            │    │
+│  │     (index.ts: publishLspStatus; diagnostics.ts: track modifiedFiles)│    │
 │  │  pi.on("turn_end")   ◄── onFileChanged() ──► getDiagnostics() ─┐   │    │
 │  │                             notify pi-lint status via ctx.ui    │   │    │
 │  └─────────────────────────────────────────────────────────────────┼───┘    │
@@ -64,20 +69,25 @@ pi-lsp is a pi extension that integrates the Language Server Protocol (LSP) into
 │             ▲                                                               │
 │             │ sends LSP requests                                            │
 │  ┌──────────┴──────────────────────────────────────────────────────────┐    │
-│  │                    src/tools/ (6 tool modules)                      │    │
+│  │                   src/tools/ (11 tool modules)                      │    │
 │  │                                                                     │    │
-│  │  shared.ts ── executePreamble() (5/6 tools)                         │    │
+│  │  shared.ts ── executePreamble() (10/11 tools)                       │    │
 │  │             ├── resolveFile() ──► languageFromPath()                │    │
 │  │             ├── ensureServerInstalled() ──► isServerInstalled()     │    │
 │  │             ├── manager.getClientForConfig()                        │    │
 │  │             └── manager.ensureFileOpen()                            │    │
 │  │                                                                     │    │
 │  │  diagnostics.ts ── manager.getDiagnostics() ──► format summary      │    │
-│  │  find-references.ts ── client.findReferences() ──► 1→0 index conv   │    │
-│  │  goto-definition.ts ── client.gotoDefinition() ──► 1→0 index conv   │    │
-│  │  refactor-symbol.ts ── client.prepareRename() + rename() ──► patch  │    │
-│  │  find-symbol.ts ── client.workspaceSymbol() (special: no preamble)  │    │
-│  │  call-hierarchy.ts ── prepareCallHierarchy() + incoming/outgoing    │    │
+│  │  find_references.ts ── client.findReferences() ──► 1→0 index conv   │    │
+│  │  find_definition.ts ── client.gotoDefinition() ──► 1→0 index conv   │    │
+│  │  rename_symbol.ts ── client.prepareRename() + rename() ──► patch    │    │
+│  │  find_symbols.ts ── client.workspaceSymbol() (special: no preamble) │    │
+│  │  find_calls.ts ── prepareCallHierarchy() + incoming/outgoing        │    │
+│  │  find_document_symbols.ts ── client.documentSymbol()                │    │
+│  │  hover.ts ── client.hover() ──► 1→0 index conv                      │    │
+│  │  find_implementations.ts ── client.findImplementations() ──► 1→0    │    │
+│  │  find_type_definition.ts ── client.findTypeDefinition() ──► 1→0     │    │
+│  │  find_type_hierarchy.ts ── prepareTypeHierarchy() + super/subtypes  │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                             │
 │             ┌─────────────────────────────────────────────────────┐         │
@@ -104,21 +114,28 @@ Data flows:
 | File | Responsibility | Public Exports | Imports From |
 |---|---|---|---|
 | `src/index.ts` | Extension entry point; lifecycle hooks, tool registration, status publishing | `default` function `(pi: ExtensionAPI) => void` | `./lsp-manager.js`, `./diagnostics.js`, `./tools/*.js` |
-| `src/lsp-manager.ts` | Server lifecycle: start/stop/idle, file tracking, diagnostics cache | `LspManager` class | `./lsp-client.js`, `./language-config.js`, `./types.js` |
+| `src/lsp-manager.ts` | Server lifecycle: start/stop/idle, file tracking (200 cap), diagnostics cache | `LspManager` class | `./lsp-client.js`, `./language-config.js`, `./types.js` |
 | `src/lsp-client.ts` | JSON-RPC protocol layer: stdio framing, message parsing, request tracking | `LspClient` class | `./types.js` |
-| `src/types.ts` | Shared type definitions: configs, state, tool params | `LspServerConfig`, `ServerStatus`, `LspServerInstance`, `LspManagerState`, all `*Params` interfaces | `vscode-languageserver-types` (Diagnostic) |
+| `src/types.ts` | Shared type definitions: configs, state, tool params (11 tool param interfaces) | `LspServerConfig`, `ServerStatus`, `LspServerInstance`, `LspManagerState`, all `*Params` interfaces | `vscode-languageserver-types` (Diagnostic) |
 | `src/types-global.d.ts` | Ambient type declarations for pi runtime & TypeBox | Module augmentations for `typebox` and `@earendil-works/pi-coding-agent` | — (declaration only) |
 | `src/language-config.ts` | 33 language server configs; extension→language mapping; install detection | `LANGUAGE_SERVERS`, `getConfigForExtension()`, `languageFromPath()`, `isServerInstalled()` | `./types.js` |
-| `src/diagnostics.ts` | Auto-trigger diagnostics hook on write/edit tool results | `registerDiagnosticsHook(pi, manager)` | `./lsp-manager.js`, `./language-config.js` |
-| `src/tools/shared.ts` | Shared utilities: preamble, error builder, URI conversion, diff generation, constants | `executePreamble()`, `toolError()`, `resolveFile()`, `uriToFilePath()`, `filePathToUri()`, `ensureServerInstalled()`, `applyEdits()`, `buildDiff()`, `MAX_SYMBOL_RESULTS` (= 50), `SEVERITY_NAMES`, `SYMBOL_KIND_NAMES`, `ToolUI`, `PreambleResult` | `../lsp-manager.js`, `../lsp-client.js`, `../language-config.js`, `../types.js` |
+| `src/diagnostics.ts` | Auto-trigger diagnostics hook on write/edit tool results | `registerDiagnosticsHook(pi, getManager)` — `getManager: () => LspManager \| null` | `./lsp-manager.js`, `./language-config.js` |
+| `src/tools/shared.ts` | Shared utilities: preamble, error builder, URI conversion, diff generation, constants | `executePreamble()`, `toolError()`, `resolveFile()`, `uriToFilePath()`, `filePathToUri()`, `ensureServerInstalled()`, `applyEdits()`, `buildDiff()`, `MAX_SYMBOL_RESULTS` (= 50), `SEVERITY_NAMES`, `SYMBOL_KIND_NAMES`, `SYMBOL_KIND_BY_NAME`, `parseSymbolKind()`, `sanitizeError()`, `ToolUI`, `PreambleResult` | `../lsp-manager.js`, `../lsp-client.js`, `../language-config.js`, `../types.js` |
 | `src/tools/diagnostics.ts` | `lsp_diagnostics` tool registration | `registerDiagnosticsTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find-references.ts` | `lsp_find_references` tool registration | `registerFindReferencesTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/goto-definition.ts` | `lsp_goto_definition` tool registration | `registerGotoDefinitionTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/refactor-symbol.ts` | `lsp_refactor_symbol` tool registration | `registerRefactorSymbolTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find-symbol.ts` | `lsp_find_symbol` tool registration (workspace-wide search) | `registerFindSymbolTool(pi, getManager, getCwd)` | `./shared.js`, `../language-config.js` |
-| `src/tools/call-hierarchy.ts` | `lsp_call_hierarchy` tool registration | `registerCallHierarchyTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_references.ts` | `find_references` tool registration | `registerFindReferencesTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_definition.ts` | `find_definition` tool registration | `registerFindDefinitionTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_symbols.ts` | `find_symbols` tool registration (workspace-wide search) | `registerFindSymbolsTool(pi, getManager, getCwd)` | `./shared.js`, `../language-config.js` |
+| `src/tools/find_calls.ts` | `find_calls` tool registration | `registerFindCallsTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/rename_symbol.ts` | `rename_symbol` tool registration | `registerRenameSymbolTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_document_symbols.ts` | `find_document_symbols` tool registration | `registerFindDocumentSymbolsTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/hover.ts` | `hover` tool registration | `registerHoverTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_implementations.ts` | `find_implementations` tool registration | `registerFindImplementationsTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_type_definition.ts` | `find_type_definition` tool registration | `registerFindTypeDefinitionTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/find_type_hierarchy.ts` | `find_type_hierarchy` tool registration | `registerFindTypeHierarchyTool(pi, getManager, getCwd)` | `./shared.js` |
 
 ---
+
+> **Note: Stale types in `types.ts`** — The `FindTypeHierarchyParams` interface declares `direction` as `"supertypes" | "subtypes"` (required, no `"both"`) and `depth` as `number` (required). The actual tool schema in `find_type_hierarchy.ts` correctly marks both as `Type.Optional()` and defaults `direction` to `"both"`. The `types.ts` definitions are not used at runtime by the tools (which rely on TypeBox schemas directly), but are misleading for readers.
 
 ## 3. Dependency Graph
 
@@ -133,24 +150,25 @@ index.ts
   ├── diagnostics.ts
   │     ├── lsp-manager.ts  (→ see above)
   │     └── language-config.ts  (→ see above)
-  ├── tools/diagnostics.ts
-  │     └── tools/shared.ts
-  │           ├── lsp-manager.ts  (→ see above)
-  │           ├── lsp-client.ts   (→ see above)
-  │           └── language-config.ts  (→ see above)
-  ├── tools/find-references.ts  ──► tools/shared.ts  (→ see above)
-  ├── tools/goto-definition.ts  ──► tools/shared.ts  (→ see above)
-  ├── tools/refactor-symbol.ts  ──► tools/shared.ts  (→ see above)
-  ├── tools/find-symbol.ts      ──► tools/shared.ts + language-config.ts
-  └── tools/call-hierarchy.ts   ──► tools/shared.ts  (→ see above)
+  ├── tools/diagnostics.ts       ──► tools/shared.ts  (→ see above)
+  ├── tools/find_references.ts   ──► tools/shared.ts  (→ see above)
+  ├── tools/find_definition.ts   ──► tools/shared.ts  (→ see above)
+  ├── tools/find_symbols.ts      ──► tools/shared.ts (utilities only, no executePreamble) + language-config.ts
+  ├── tools/find_calls.ts        ──► tools/shared.ts  (→ see above)
+  ├── tools/rename_symbol.ts     ──► tools/shared.ts  (→ see above)
+  ├── tools/find_document_symbols.ts ──► tools/shared.ts  (→ see above)
+  ├── tools/hover.ts             ──► tools/shared.ts  (→ see above)
+  ├── tools/find_implementations.ts ──► tools/shared.ts  (→ see above)
+  ├── tools/find_type_definition.ts ──► tools/shared.ts  (→ see above)
+  └── tools/find_type_hierarchy.ts ──► tools/shared.ts  (→ see above)
 ```
 
 **Import characteristics:**
 - **`index.ts`** is the sole entry point. It imports all tool modules and the manager but never imports `lsp-client.ts` or `language-config.ts` directly.
 - **`lsp-manager.ts`** is the central orchestrator. It imports `LspClient` and `languageFromPath`, and owns the `state.servers` and `clientMap` maps.
 - **`lsp-client.ts`** is a leaf module — it only imports `types.ts` and `node:child_process`.
-- **`tools/shared.ts`** is the shared utility layer. Every file-based tool imports it. It imports from the manager, client, and language-config layers.
-- **`tools/find-symbol.ts`** is the only tool that bypasses `executePreamble()` and imports directly from `language-config.ts` for its workspace-scanning logic.
+- **`tools/shared.ts`** is the shared utility layer. Ten of eleven file-based tools import it. It imports from the manager, client, and language-config layers.
+- **`tools/find_symbols.ts`** is the only tool that bypasses `executePreamble()` — it imports utility functions from `shared.ts` (`toolError`, `uriToFilePath`, etc.) but implements its own server discovery logic using `manager.getClientMap()` and `language-config.ts`.
 
 ---
 
@@ -163,7 +181,7 @@ pi loads extension
 index.ts: default function(pi) is called
   │  ├─ Declares manager: LspManager | null = null
   │  ├─ Declares cwd = process.cwd()
-  │  ├─ Registers 6 tools (pi.registerTool) — available immediately
+  │  ├─ Registers 11 tools (pi.registerTool) — available immediately
   │  └─ Registers 1 command (pi.registerCommand "lsp-status")
   │
   ▼
@@ -174,7 +192,7 @@ session_start event fires
   │  │     ├─ state.servers = new Map()
   │  │     ├─ clientMap = new Map()
   │  │     ├─ setInterval(checkIdleServers, 60_000)
-  │  │     └─ registerDiagnosticsHook(pi, manager)
+  │  │     └─ registerDiagnosticsHook(pi, getManager)  — getManager: () => LspManager | null
   │  │           ├─ pi.on("tool_result") — tracks modifiedFiles (SEPARATE handler from index.ts's publishLspStatus)
   │  │           └─ pi.on("turn_end")    — runs diagnostics
   │  └─ publishLspStatus() — ui.setStatus("pi-lsp", undefined)
@@ -182,7 +200,7 @@ session_start event fires
   ▼
 User/Agent calls an LSP tool (e.g., lsp_diagnostics)
   │  ├─ execute() receives params
-  │  ├─ executePreamble() runs
+  │  ├─ executePreamble() runs (10/11 tools; find_symbols bypasses it)
   │  │     ├─ resolve file path
   │  │     ├─ languageFromPath() → config
   │  │     ├─ isServerInstalled() / ensureServerInstalled()
@@ -204,10 +222,9 @@ diagnostics.ts hook fires on write/edit tool_result
   │
   ▼
 turn_end event fires
-  │  ├─ 500ms settle delay
-  │  ├─ For each modified file:
-  │  │     ├─ manager.onFileChanged() — didOpen/didChange
-  │  │     ├─ 1000ms wait for server processing
+  │  ├─ Promise.all(onFileChanged for all modified files) — parallel file opens
+  │  ├─ Single 1000ms wait for all servers to process
+  │  ├─ For each file (sequential cache reads):
   │  │     └─ manager.getDiagnostics(filePath, true) — pull/push
   │  └─ ui.setStatus("pi-lint", "✓ clean" | "N error(s), M warning(s)")
   │
@@ -337,7 +354,7 @@ Returns an array of status objects for all managed servers. Each entry contains 
 #### `getClientMap(): Map<string, LspClient>`
 
 Returns the internal map of language → active `LspClient` instances. Used by:
-- `lsp_find_symbol` (`src/tools/find-symbol.ts`) to iterate all running servers when performing workspace-wide symbol searches (bypasses `executePreamble()`).
+- `find_symbols` (`src/tools/find_symbols.ts`) to iterate all running servers when performing workspace-wide symbol searches (bypasses `executePreamble()`).
 
 ### Idle Check Logic
 
@@ -374,6 +391,8 @@ Each server tracks open files in two maps:
 |---|---|---|
 | `server.fileVersions: Map<uri, number>` | Monotonically increasing version counter per document | Incremented in `ensureFileOpen()` — first open sends `didOpen`, subsequent sends send `didChange` with incremented version |
 | `server.diagnostics: Map<uri, Diagnostic[]>` | Cache of latest diagnostics per URI | Updated in `handleDiagnosticsNotification()` (push model) and `getDiagnostics()` (pull model) |
+
+File tracking is capped at **200 files** per server. When the limit is exceeded, the oldest entries (both `fileVersions` and `diagnostics`) are pruned to prevent unbounded memory growth.
 
 ### Diagnostics Cache
 
@@ -488,6 +507,27 @@ client.shutdown() called
   └─ server.pid = null
 ```
 
+### LSP Methods Exposed by LspClient
+
+| Method | LSP Request | Purpose |
+|---|---|---|
+| `gotoDefinition(uri, line, col)` | `textDocument/definition` | Find definition at position |
+| `findReferences(uri, line, col)` | `textDocument/references` | Find all references to symbol |
+| `prepareRename(uri, line, col)` | `textDocument/prepareRename` | Validate rename target |
+| `rename(uri, line, col, newName)` | `textDocument/rename` | Apply symbol rename |
+| `workspaceSymbol(query)` | `workspace/symbol` | Search symbols across workspace |
+| `prepareCallHierarchy(uri, line, col)` | `textDocument/prepareCallHierarchy` | Start call hierarchy |
+| `incomingCalls(item)` | `callHierarchy/incomingCalls` | Get callers |
+| `outgoingCalls(item)` | `callHierarchy/outgoingCalls` | Get callees |
+| `documentSymbol(uri)` | `textDocument/documentSymbol` | Get symbols in a file |
+| `hover(uri, line, col)` | `textDocument/hover` | Get hover info at position |
+| `findImplementations(uri, line, col)` | `textDocument/implementation` | Find implementations of interface/method |
+| `findTypeDefinition(uri, line, col)` | `textDocument/typeDefinition` | Find type definition at position |
+| `prepareTypeHierarchy(uri, line, col)` | `textDocument/prepareTypeHierarchy` | Start type hierarchy |
+| `typeHierarchySupertypes(item)` | `typeHierarchy/supertypes` | Get supertypes |
+| `typeHierarchySubtypes(item)` | `typeHierarchy/subtypes` | Get subtypes |
+| `requestDiagnostics(uri)` | `textDocument/diagnostic` | Pull-model diagnostics (LSP 3.17+) |
+
 ---
 
 ## 8. Tool Registration Pattern
@@ -549,7 +589,22 @@ export function registerDiagnosticsTool(
 
 ## 9. executePreamble Flow
 
-Five of the six file-based tools (`lsp_diagnostics`, `lsp_find_references`, `lsp_goto_definition`, `lsp_refactor_symbol`, `lsp_call_hierarchy`) share a common preamble in `src/tools/shared.ts`. `lsp_find_symbol` is the exception — it operates workspace-wide and implements its own server discovery logic.
+Ten of the eleven tools share a common preamble in `src/tools/shared.ts`. The sole exception is **`find_symbols`**, which operates workspace-wide and implements its own server discovery logic using `manager.getClientMap()`.
+
+**Tools that use `executePreamble()`:**
+
+| Tool | File |
+|---|---|
+| `lsp_diagnostics` | `src/tools/diagnostics.ts` |
+| `find_references` | `src/tools/find_references.ts` |
+| `find_definition` | `src/tools/find_definition.ts` |
+| `find_calls` | `src/tools/find_calls.ts` |
+| `rename_symbol` | `src/tools/rename_symbol.ts` |
+| `find_document_symbols` | `src/tools/find_document_symbols.ts` |
+| `hover` | `src/tools/hover.ts` |
+| `find_implementations` | `src/tools/find_implementations.ts` |
+| `find_type_definition` | `src/tools/find_type_definition.ts` |
+| `find_type_hierarchy` | `src/tools/find_type_hierarchy.ts` |
 
 ```
 executePreamble(file, cwd, getManager, ui)
@@ -614,11 +669,15 @@ pi-lsp tools use **1-indexed** line and column numbers in their public API, whil
 ### Tool API → LSP Wire (outbound)
 
 ```typescript
-// In lsp_find_references.ts, lsp_goto_definition.ts, lsp_refactor_symbol.ts, lsp_call_hierarchy.ts
+// In find_references.ts, find_definition.ts, rename_symbol.ts, find_calls.ts, hover.ts, find_implementations.ts, find_type_definition.ts, find_type_hierarchy.ts
 await client.findReferences(uri, params.line - 1, params.column - 1);
 await client.gotoDefinition(uri, params.line - 1, params.column - 1);
 await client.prepareRename(uri, params.line - 1, params.column - 1);
 await client.prepareCallHierarchy(uri, params.line - 1, params.column - 1);
+await client.hover(uri, params.line - 1, params.column - 1);
+await client.findImplementations(uri, params.line - 1, params.column - 1);
+await client.findTypeDefinition(uri, params.line - 1, params.column - 1);
+await client.prepareTypeHierarchy(uri, params.line - 1, params.column - 1);
 ```
 
 The `-1` conversion is applied inline at each call site.
@@ -626,14 +685,14 @@ The `-1` conversion is applied inline at each call site.
 ### LSP Wire → Tool Result (inbound)
 
 ```typescript
-// In lsp_find_references.ts
+// In find_references.ts
 const locations = result.map((loc) => ({
   uri: loc.uri,
   line: loc.range.start.line + 1,       // 0-indexed → 1-indexed
   col: loc.range.start.character + 1,   // 0-indexed → 1-indexed
 }));
 
-// In lsp_diagnostics.ts
+// In diagnostics.ts
 const startLine = d.range.start.line + 1;
 const startCol = d.range.start.character + 1;
 ```
@@ -646,7 +705,7 @@ The `+1` conversion is applied when formatting results for display.
 |---|---|---|---|
 | Tool params → `client.*` | 1 → 0 | `line - 1`, `column - 1` | Each tool's `execute()` |
 | LSP `Location` → tool result | 0 → 1 | `range.start.line + 1`, `character + 1` | Each tool's `execute()` |
-| LSP `Diagnostic` → tool result | 0 → 1 | `range.start.line + 1`, `character + 1` | `lsp_diagnostics.ts` |
+| LSP `Diagnostic` → tool result | 0 → 1 | `range.start.line + 1`, `character + 1` | `diagnostics.ts` |
 | Internal `applyEdits()` | 0-indexed | No conversion — works on raw LSP `TextEdit` ranges | `shared.ts` |
 
 **Important**: The `applyEdits()` function in `shared.ts` operates on LSP-native 0-indexed ranges directly (from `WorkspaceEdit`), so no conversion is needed there.

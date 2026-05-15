@@ -89,10 +89,10 @@ Every language entry conforms to the `LspServerConfig` interface defined in [`sr
 
 6. **Set `extensions`** — include all relevant file extensions with leading dots. If the server handles files without extensions (e.g. `Dockerfile`, `Makefile`), include the bare filename as a string in the array.
 
-7. **Rebuild the extension** so the new config is compiled:
+7. **Restart the pi session** so the new config is loaded (no build step required — pi loads TypeScript source directly):
 
    ```sh
-   npm run build
+   # No build step needed. Simply restart pi or start a new session.
    ```
 
 8. **Test** by opening a file with the new extension and invoking an LSP tool. The system should auto-detect the language, check for installation, and prompt to install if needed.

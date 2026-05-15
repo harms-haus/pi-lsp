@@ -72,21 +72,21 @@ exec(config.detectCommand, { timeout: 10000 }, (error) => {
 
 **Timing details:**
 
-- After `turn_end`, there's a **500 ms** settle delay before triggering diagnostics
+- After `turn_end`, modified files are opened in parallel via `Promise.all` (no settle delay)
 - Then a **1000 ms** wait for diagnostics to arrive from the server
-- Only `write` and `edit` tool results trigger this flow (not `lsp_refactor_symbol`, which returns a diff)
+- Only `write` and `edit` tool results trigger this flow (not `rename_symbol`, which returns a diff)
 
 **Diagnostic flow:**
 
 ```
-turn_end → 500ms delay → manager.onFileChanged() → 1000ms wait → getDiagnostics(refresh=true)
+turn_end → manager.onFileChanged() (parallel) → 1000ms wait → getDiagnostics(refresh=true) (sequential)
 ```
 
 ---
 
-## 4. `lsp_find_symbol` Returns No Results
+## 4. `find_symbols` Returns No Results
 
-**Symptom:** `lsp_find_symbol` returns `No symbols found matching "<query>".`
+**Symptom:** `find_symbols` returns `No symbols found matching "<query>".`
 
 **Causes & Fixes:**
 
@@ -96,8 +96,9 @@ turn_end → 500ms delay → manager.onFileChanged() → 1000ms wait → getDiag
 | Server doesn't support `workspace/symbol` | Not all LSP servers implement workspace symbol search. Try a different server |
 | Server discovery fell back to a server that doesn't know your symbols | Server discovery tries: (1) TypeScript server, (2) any running server, (3) scans for source files with `find` at `maxdepth 3` within **5 seconds**. If it picks the wrong server, results will be incomplete |
 | Query is empty or too short | The tool rejects queries shorter than 1 character |
+| `kind` parameter is too restrictive | If you specified a `kind` filter (e.g., `Function`, `Class`), the server may have no symbols matching that category. Try the query without a `kind` filter, or check the [SymbolKind](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind) enum for valid values |
 
-**Server discovery order (`find-symbol.ts`):**
+**Server discovery order (`find_symbols.ts`):**
 
 1. **TypeScript** (`typescript-language-server`) — preferred for best workspace symbol support
 2. **Any running server** — iterates `LANGUAGE_SERVERS` and picks the first live client
@@ -105,7 +106,7 @@ turn_end → 500ms delay → manager.onFileChanged() → 1000ms wait → getDiag
 
 ---
 
-## 5. `lsp_refactor_symbol` Patch Is Wrong or Empty
+## 5. `rename_symbol` Patch Is Wrong or Empty
 
 **Symptom:** The returned diff shows no changes, incorrect ranges, or `No changes generated.`
 
@@ -118,6 +119,7 @@ turn_end → 500ms delay → manager.onFileChanged() → 1000ms wait → getDiag
 | File couldn't be read when building the diff | If `readFileSync(changePath)` fails (file doesn't exist, permissions), the diff falls back to showing only the `newText` with `/dev/null` as the original. Ensure all affected files are accessible |
 | Edits overlap or are out of order | `applyEdits()` sorts edits in reverse order (bottom-to-top, right-to-left) to avoid offset corruption. If the server sends overlapping ranges, the result may be corrupted. Try a different position |
 | `documentChanges` and `changes` formats both present | The tool processes `documentChanges` first (LSP 3.17+), then `changes` (legacy), skipping duplicates. If both contain the same file, only the `documentChanges` version is used |
+| Workspace boundary filtering excluded results | Some servers restrict rename operations to files within the workspace root. Edits to files outside `rootUri` may be silently dropped. Verify all affected files are within your project root |
 
 **Important:** The tool **does not** apply changes automatically. It returns a unified diff patch that you must apply with the `edit` tool.
 
@@ -191,7 +193,7 @@ if (server.status === "running"
 
 ## 8. TypeScript/JS Not Finding Definitions
 
-**Symptom:** `lsp_goto_definition` returns no results for `.ts`, `.tsx`, `.js`, or `.jsx` files.
+**Symptom:** `find_definition` returns no results for `.ts`, `.tsx`, `.js`, or `.jsx` files.
 
 **Causes & Fixes:**
 
@@ -261,6 +263,52 @@ const warnings = diagnostics.filter((d) => d.severity === 2).length;
 ```
 
 Only errors and warnings trigger UI notifications. Info and Hint severities are included in the raw diagnostic data but not shown in the status bar.
+
+---
+
+## 11. `hover` Returns No Information
+
+**Symptom:** `hover` returns `"No hover information available at this position."`
+
+**Causes & Fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| Cursor is not on a recognizable symbol | Hover requires the cursor to be positioned on a symbol (variable, function, type, etc.). Positions on whitespace, punctuation, or keywords with no semantic meaning will return no results |
+| Server doesn't support `textDocument/hover` | Not all LSP servers implement hover. Check the server's capabilities in `language-support.md` or verify by checking the `initialize` response's `capabilities.hoverProvider` |
+| File hasn't been indexed yet | After opening a file, the server may need time to parse and index it before hover works. Wait a moment and retry |
+
+**Quick diagnostic:** Try `find_definition` at the same position first. If that also returns no results, the position isn't on a valid symbol.
+
+---
+
+## 12. `find_type_hierarchy` Says Not Supported
+
+**Symptom:** Returns `"Type hierarchy is not supported by this language server"`.
+
+**Causes & Fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| Server doesn't implement type hierarchy | `textDocument/prepareTypeHierarchy` was added in LSP 3.17. Many older or simpler servers don't support it. This is a server limitation, not a pi-lsp bug |
+| Cursor is not on a class, interface, or type | Type hierarchy only works when positioned on a type definition or reference. Hovering over a variable or function call will not produce results |
+| Server hasn't finished analyzing the file | Some servers need full semantic analysis before type hierarchy is available. Wait for indexing to complete |
+
+**Alternatives:** Use `find_implementations` to discover subtypes of an interface or abstract class. Use `find_definition` to navigate to the type's source directly.
+
+---
+
+## 13. `find_implementations` Returns Empty
+
+**Symptom:** Returns 0 implementations for an interface or abstract class.
+
+**Causes & Fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| Cursor is not on the type name itself | `find_implementations` requires the cursor to be positioned on the interface/abstract class name, not on a method or usage within it |
+| No implementations exist in the workspace | If no file in the current workspace defines a class that implements the interface, the result will be empty. This is correct behavior |
+| Server hasn't finished indexing the workspace | After opening a large project, the server may not have discovered all files yet. Wait for indexing to complete (check via `lsp_status` if available) and retry |
 
 ---
 

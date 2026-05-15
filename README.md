@@ -5,7 +5,7 @@ LSP (Language Server Protocol) integration extension for [pi](https://github.com
 ## Features
 
 - **Auto-diagnostics on edit/write**: Automatically runs LSP diagnostics after `write` or `edit` tool calls complete
-- **6 LSP tools**: diagnostics, find-references, refactor-symbol, goto-definition, find-symbol, call-hierarchy (tool names use snake_case: `lsp_diagnostics`, `lsp_find_references`, `lsp_refactor_symbol`, `lsp_goto_definition`, `lsp_find_symbol`, `lsp_call_hierarchy`)
+- **11 LSP tools**: `lsp_diagnostics`, `find_references`, `find_definition`, `find_symbols`, `find_calls`, `rename_symbol`, `find_document_symbols`, `hover`, `find_implementations`, `find_type_definition`, `find_type_hierarchy`
 - **Auto-install**: Detects missing LSP servers and prompts to install them on first use
 - **Persistent servers**: LSP servers stay alive with a 5-minute idle timeout
 - **33 languages supported**: From TypeScript to Zig, with installation commands for each
@@ -35,7 +35,7 @@ npm install          # Install dependencies
 npm run lint           # Lint source code
 npm run lint:fix       # Auto-fix lint issues
 npm run typecheck      # Type-check without emitting
-npm test               # Run test suite (96 tests)
+npm test               # Run test suite (106 tests, 7 skipped)
 npm run test:coverage  # Run tests with coverage report
 npm run test:watch     # Run tests in watch mode
 ```
@@ -46,23 +46,26 @@ No build step required — pi loads TypeScript source directly.
 
 ### lsp_diagnostics
 
-Run diagnostics on a file. Shows errors, warnings, and info messages.
+Run diagnostics on a file or scan the entire workspace for errors.
 
 ```
-lsp_diagnostics(file="src/index.ts", refresh=false)
+lsp_diagnostics(file="src/index.ts", workspace=false, refresh=false)
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `file` | string | Path to the file to check |
+| `file` | string (optional) | Path to the file to check |
+| `workspace` | boolean (optional) | Scan all open files across all running LSP servers for errors |
 | `refresh` | boolean (optional) | Force refresh diagnostics from the server |
 
-### lsp_find_references
+Provide either `file` or `workspace=true`. When `workspace=true`, the tool scans all currently open files across all running LSP servers — useful for a project-wide error overview.
+
+### find_references
 
 Find all references to the symbol at the given position.
 
 ```
-lsp_find_references(file="src/index.ts", line=42, column=10)
+find_references(file="src/index.ts", line=42, column=10)
 ```
 
 | Parameter | Type | Description |
@@ -71,12 +74,53 @@ lsp_find_references(file="src/index.ts", line=42, column=10)
 | `line` | number | Line number (1-indexed) |
 | `column` | number | Column number (1-indexed) |
 
-### lsp_refactor_symbol
+### find_definition
 
-Rename a symbol and return a unified diff patch. **Does not auto-apply.**
+Find the definition of a symbol at the given position.
 
 ```
-lsp_refactor_symbol(file="src/index.ts", line=42, column=10, newName="newName")
+find_definition(file="src/index.ts", line=42, column=10)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file` | string | Path to the file |
+| `line` | number | Line number (1-indexed) |
+| `column` | number | Column number (1-indexed) |
+
+### find_symbols
+
+Fuzzy search for symbols across the workspace.
+
+```
+find_symbols(query="MyClass", kind="class")
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | Fuzzy symbol name to search for |
+| `kind` | string (optional) | Filter by symbol kind (e.g. `"class"`, `"function"`, `"interface"`, `"enum"`). Case-insensitive. |
+
+### find_calls
+
+Show call hierarchy for a function (incoming and outgoing calls).
+
+```
+find_calls(file="src/index.ts", line=42, column=10)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file` | string | Path to the file |
+| `line` | number | Line number (1-indexed) |
+| `column` | number | Column number (1-indexed) |
+
+### rename_symbol
+
+Rename a symbol and return a unified diff patch. **Does not auto-apply changes.**
+
+```
+rename_symbol(file="src/index.ts", line=42, column=10, newName="newName")
 ```
 
 | Parameter | Type | Description |
@@ -86,12 +130,28 @@ lsp_refactor_symbol(file="src/index.ts", line=42, column=10, newName="newName")
 | `column` | number | Column number (1-indexed) |
 | `newName` | string | New name for the symbol |
 
-### lsp_goto_definition
+Returns a unified diff showing all proposed changes across the workspace. Apply the patch manually if desired.
 
-Find the definition of a symbol at the given position.
+### find_document_symbols
+
+Get an outline of all symbols (classes, functions, variables, etc.) in a single file. Useful for understanding file structure without reading the entire file.
 
 ```
-lsp_goto_definition(file="src/index.ts", line=42, column=10)
+find_document_symbols(file="src/index.ts")
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file` | string | Path to the file to outline |
+
+Returns symbol names, kinds (class/function/variable), and line numbers in a hierarchical outline.
+
+### hover
+
+Get type information, signature, and documentation for the symbol at a given position.
+
+```
+hover(file="src/index.ts", line=42, column=10)
 ```
 
 | Parameter | Type | Description |
@@ -100,24 +160,14 @@ lsp_goto_definition(file="src/index.ts", line=42, column=10)
 | `line` | number | Line number (1-indexed) |
 | `column` | number | Column number (1-indexed) |
 
-### lsp_find_symbol
+Shows the inferred or declared type, function signatures, and doc comments — equivalent to hovering over a symbol in an IDE.
 
-Fuzzy search for symbols across the workspace.
+### find_implementations
 
-```
-lsp_find_symbol(query="MyClass")
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `query` | string | Fuzzy symbol name to search for |
-
-### lsp_call_hierarchy
-
-Show call hierarchy for a function (incoming and outgoing calls).
+Find all implementations of an interface, abstract class, or type at the given position.
 
 ```
-lsp_call_hierarchy(file="src/index.ts", line=42, column=10)
+find_implementations(file="src/types.ts", line=10, column=5)
 ```
 
 | Parameter | Type | Description |
@@ -125,6 +175,42 @@ lsp_call_hierarchy(file="src/index.ts", line=42, column=10)
 | `file` | string | Path to the file |
 | `line` | number | Line number (1-indexed) |
 | `column` | number | Column number (1-indexed) |
+
+Works best when placed on an interface or abstract class name — returns locations of all concrete implementations.
+
+### find_type_definition
+
+Find where the **type** of a symbol is defined (not the symbol itself).
+
+```
+find_type_definition(file="src/index.ts", line=42, column=10)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file` | string | Path to the file |
+| `line` | number | Line number (1-indexed) |
+| `column` | number | Column number (1-indexed) |
+
+Unlike `find_definition` (which goes to the variable/function declaration), this goes to where the symbol's type is defined. For example, on `const user: User`, `find_definition` goes to the assignment, while `find_type_definition` goes to the `User` class definition.
+
+### find_type_hierarchy
+
+Show the inheritance chain for a class or type — parent types (supertypes) and/or child types (subtypes).
+
+```
+find_type_hierarchy(file="src/types.ts", line=10, column=5, direction="supertypes", depth=3)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file` | string | Path to the file |
+| `line` | number | Line number (1-indexed) |
+| `column` | number | Column number (1-indexed) |
+| `direction` | string (optional) | `"supertypes"` (parents/ancestors), `"subtypes"` (children/descendants), or `"both"` (default) |
+| `depth` | number (optional) | Maximum depth to traverse. Default: 2 |
+
+Not all language servers support type hierarchy — the tool returns a clear message if unsupported.
 
 ## Commands
 
@@ -180,7 +266,7 @@ Show the status of all running LSP servers.
 ├─────────────────────────────────────────────────────────┤
 │  index.ts                                               │
 │  ├── Session lifecycle (session_start, session_shutdown) │
-│  ├── 6 Tool registrations                               │
+│  ├── 11 Tool registrations                               │
 │  └── /lsp-status command                                │
 ├─────────────────────────────────────────────────────────┤
 │  lsp-manager.ts                                         │
@@ -200,13 +286,18 @@ Show the status of all running LSP servers.
 │  └── Auto-diagnostics hook on write/edit tools          │
 ├─────────────────────────────────────────────────────────┤
 │  src/tools/                                             │
-│  ├── shared.ts             # Shared tool utilities      │
-│  ├── diagnostics.ts        # lsp_diagnostics tool       │
-│  ├── find-references.ts    # lsp_find_references tool   │
-│  ├── refactor-symbol.ts    # lsp_refactor_symbol tool   │
-│  ├── goto-definition.ts    # lsp_goto_definition tool   │
-│  ├── find-symbol.ts        # lsp_find_symbol tool       │
-│  └── call-hierarchy.ts     # lsp_call_hierarchy tool    │
+│  ├── shared.ts                 # Shared tool utilities  │
+│  ├── diagnostics.ts            # lsp_diagnostics tool   │
+│  ├── find_references.ts        # find_references tool   │
+│  ├── find_definition.ts        # find_definition tool   │
+│  ├── find_symbols.ts           # find_symbols tool      │
+│  ├── find_calls.ts             # find_calls tool        │
+│  ├── rename_symbol.ts          # rename_symbol tool     │
+│  ├── find_document_symbols.ts  # find_document_symbols  │
+│  ├── hover.ts                  # hover tool             │
+│  ├── find_implementations.ts   # find_implementations   │
+│  ├── find_type_definition.ts   # find_type_definition   │
+│  └── find_type_hierarchy.ts    # find_type_hierarchy    │
 ├─────────────────────────────────────────────────────────┤
 │  types.ts                                               │
 │  └── Shared type definitions                            │
