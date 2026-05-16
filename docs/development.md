@@ -45,11 +45,11 @@ Recommended workflow: keep `npm run test:watch` running in one terminal while ed
 
 ## Test Suite
 
-The test suite consists of **119 tests across 17 files**: 119 passed, 7 skipped.
+The test suite consists of **284 tests across 18 files**: 284 passed, 0 skipped.
 
 | Layer | Files | Description |
 |-------|-------|-------------|
-| Unit | 6 | `diagnostics`, `language-config`, `lsp-client`, `lsp-manager`, `shared`, `index` |
+| Unit | 7 | `diagnostics`, `language-config`, `lsp-client`, `lsp-client-methods`, `lsp-manager`, `shared`, `index` |
 | Integration | 11 | One file per LSP tool (diagnostics, find_references, find_definition, find_symbols, find_calls, rename_symbol, find_document_symbols, hover, find_implementations, find_type_definition, find_type_hierarchy) |
 
 ## Project Structure
@@ -76,7 +76,11 @@ pi-lsp/
 │   ├── language-config.ts        # 33 language server configurations (command, args, install instructions)
 │   ├── diagnostics.ts            # Auto-diagnostics hook triggered on write/edit tool completion
 │   └── tools/
-│       ├── shared.ts             # Shared tool utilities (position conversion, LSP request helpers)
+│       ├── shared.ts             # Re-exports from submodules for backward compatibility
+│       ├── paths.ts              # Path/URI utilities (resolveFile, uriToFilePath, filePathToUri, flattenLocations, formatLocations)
+│       ├── formatting.ts         # Formatting utilities (severity names, symbol kinds, error sanitization, toolError)
+│       ├── preamble.ts           # Shared preamble logic (executePreamble, ensureServerInstalled)
+│       ├── location-tool-factory.ts  # Factory for location-based tools (find_references, find_definition, etc.)
 │       ├── diagnostics.ts        # lsp_diagnostics tool registration
 │       ├── find_references.ts    # find_references tool registration
 │       ├── find_definition.ts    # find_definition tool registration
@@ -94,12 +98,13 @@ pi-lsp/
 │   ├── helpers/
 │   │   ├── fixtures.ts           # Shared test fixtures
 │   │   ├── mock-extension-api.ts # Mock implementation of pi ExtensionAPI
-│   │   └── mock-lsp-server.ts    # Mock LSP server for integration tests
+│   │   └── create-client-with-mock.ts  # Harness for wiring LspClient to a mock process
 │   ├── unit/
 │   │   ├── diagnostics.test.ts   # Unit tests for diagnostics.ts
 │   │   ├── language-config.test.ts # Unit tests for language-config.ts
 │   │   ├── lsp-client.test.ts    # Unit tests for JSON-RPC client
-│   │   └── index.test.ts         # Unit tests for extension entry point
+│   │   ├── lsp-client-methods.test.ts  # Unit tests for high-level LSP method wrappers
+│   │   ├── index.test.ts         # Unit tests for extension entry point
 │   │   ├── lsp-manager.test.ts   # Unit tests for server manager
 │   │   └── shared.test.ts        # Unit tests for shared utilities
 │   └── integration/

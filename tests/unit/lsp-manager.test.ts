@@ -121,36 +121,11 @@ describe("LspManager", () => {
     expect(status).toEqual([]);
   });
 
-  it("should return empty status initially", () => {
-    const status = manager.getStatus();
-    expect(status).toBeInstanceOf(Array);
-    expect(status.length).toBe(0);
-  });
 
-  it("should have getClientMap method", () => {
-    expect(manager.getClientMap).toBeDefined();
-    expect(typeof manager.getClientMap).toBe("function");
-  });
 
-  it("should have getDiagnostics method", () => {
-    expect(manager.getDiagnostics).toBeDefined();
-    expect(typeof manager.getDiagnostics).toBe("function");
-  });
 
-  it("should have handleDiagnosticsNotification method", () => {
-    expect(manager.handleDiagnosticsNotification).toBeDefined();
-    expect(typeof manager.handleDiagnosticsNotification).toBe("function");
-  });
 
-  it("should have stopServer method", () => {
-    expect(manager.stopServer).toBeDefined();
-    expect(typeof manager.stopServer).toBe("function");
-  });
 
-  it("should have stopAll method", () => {
-    expect(manager.stopAll).toBeDefined();
-    expect(typeof manager.stopAll).toBe("function");
-  });
 
   it("should store diagnostics via handleDiagnosticsNotification", () => {
     const uri = "file:///test.ts";
@@ -726,6 +701,89 @@ describe("LspManager", () => {
       await manager.stopServer("typescript");
 
       expect(manager.getStatus()).toEqual([]);
+    });
+  });
+
+  // ── 10. Dead process restart ────────────────────────────────────────────
+
+  describe("dead process restart", () => {
+    it("should restart server when process died", async () => {
+      await startMockServer(manager, TEST_TS_CONFIG);
+      expect(manager.getStatus()[0].status).toBe("running");
+
+      // Get the client and mock isAlive to return false
+      const client = manager.getClientMap().get("typescript");
+      expect(client).toBeDefined();
+      vi.spyOn(client!, "isAlive").mockReturnValue(false);
+
+      // Wire spawn for the restart
+      (child_process.spawn as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return createMockProcess().mockProc;
+      });
+
+      // Calling getClientForConfig should detect the dead process and restart
+      const result = await manager.getClientForConfig(TEST_TS_CONFIG);
+      expect(result).not.toBeNull();
+    });
+  });
+
+  // ── 11. Shutdown fallback to kill ───────────────────────────────────────
+
+  describe("shutdown fallback", () => {
+    it("should fall back to kill when shutdown fails", async () => {
+      await startMockServer(manager, TEST_TS_CONFIG);
+
+      // Get the client and mock shutdown to reject
+      const client = manager.getClientMap().get("typescript");
+      expect(client).toBeDefined();
+
+      const killSpy = vi.spyOn(client!, "kill");
+
+      vi.spyOn(client!, "shutdown").mockImplementation(async () => {
+        throw new Error("shutdown failed");
+      });
+
+      await manager.stopServer("typescript");
+
+      expect(killSpy).toHaveBeenCalled();
+    });
+  });
+
+  // ── 12. Idle server cleanup ─────────────────────────────────────────────
+
+  describe("idle server cleanup", () => {
+    it("should stop idle servers on check", async () => {
+      // Create manager with a very short idle timeout (1ms)
+      await manager.stopAll();
+      manager = new LspManager("/test/cwd", 1); // 1ms idle timeout
+
+      await startMockServer(manager, TEST_TS_CONFIG);
+      expect(manager.getStatus()).toHaveLength(1);
+
+      // Set lastActive to a long time ago
+      const servers = (manager as any).state.servers as Map<string, any>;
+      const server = servers.get("typescript");
+      server.lastActive = 0; // Very old
+
+      // Trigger idle check
+      (manager as any).checkIdleServers();
+
+      // Give the async stopServer a moment
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Server should have been stopped
+      expect(manager.getStatus()).toHaveLength(0);
+    });
+  });
+
+  // ── 13. onFileChanged for unsupported files ─────────────────────────────
+
+  describe("onFileChanged", () => {
+    it("should handle onFileChanged for unsupported file", async () => {
+      // Should not start any client, should not throw
+      await expect(manager.onFileChanged("file.xyz")).resolves.toBeUndefined();
+      expect(manager.getClientMap().size).toBe(0);
+      expect(manager.getStatus()).toHaveLength(0);
     });
   });
 });

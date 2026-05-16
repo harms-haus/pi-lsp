@@ -267,6 +267,11 @@ export class LspManager {
       for (const key of toDelete) {
         server.fileVersions.delete(key);
         server.diagnostics.delete(key);
+        try {
+          client.didClose(key);
+        } catch {
+          // ignore — server may not support didClose or may have stopped
+        }
       }
     }
   }

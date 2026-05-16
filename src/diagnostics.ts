@@ -8,7 +8,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "./lsp-manager.js";
 import { languageFromPath } from "./language-config.js";
-import { countSeverities } from "./tools/shared.js";
+import { countSeverities } from "./tools/formatting.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -33,13 +33,7 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, getManager: () => LspM
     const toolName = event.toolName;
 
     if (toolName === "write" || toolName === "edit") {
-      let filePath: string | undefined;
-
-      if (toolName === "write") {
-        filePath = (event.input as { path?: string }).path;
-      } else if (toolName === "edit") {
-        filePath = (event.input as { path?: string }).path;
-      }
+      const filePath = (event.input as { path?: string }).path;
 
       if (!filePath) return;
 

@@ -5,7 +5,8 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, toolError, SYMBOL_KIND_NAMES, sanitizeError } from "./shared.js";
+import { executePreamble } from "./preamble.js";
+import { toolError, SYMBOL_KIND_NAMES, sanitizeError } from "./formatting.js";
 import type { DocumentSymbol, SymbolInformation } from "vscode-languageserver-types";
 
 const Schema = Type.Object({

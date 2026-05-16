@@ -6,7 +6,9 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
 import type { CallHierarchyIncomingCall, CallHierarchyOutgoingCall } from "vscode-languageserver-types";
-import { executePreamble, toolError, uriToFilePath, sanitizeError } from "./shared.js";
+import { executePreamble } from "./preamble.js";
+import { toolError, sanitizeError } from "./formatting.js";
+import { uriToFilePath } from "./paths.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),

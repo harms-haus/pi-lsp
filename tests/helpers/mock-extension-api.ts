@@ -13,9 +13,10 @@ export function createMockExtensionApi() {
     execute: Function;
   }> = [];
 
-  const commands: Array<{
+  const commands: Record<string, {
     name: string;
     handler: Function;
+    description: string;
   }> = {};
 
   const eventHandlers: Record<string, Function[]> = {};

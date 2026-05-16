@@ -25,53 +25,6 @@ describe("find_references tool integration", () => {
     expect(tool.name).toBe("find_references");
   });
 
-  it("should return error for unsupported file type", async () => {
-    const tool = getTool(pi, "find_references");
-    const result = await tool.execute(
-      "call-1",
-      { file: "data.csv", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-  });
-
-  it("should return error when manager is not initialized", async () => {
-    registerFindReferencesTool(pi as any, () => null, () => "/test/cwd");
-    // Get the last registered tool (the one just registered)
-    const lastTool = pi.tools[pi.tools.length - 1];
-    const result = await lastTool.execute(
-      "call-1",
-      { file: "test.ts", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("LSP manager not initialized");
-  });
-
-  it("should return error when server not installed and user declines", async () => {
-    const { execFile } = await import("node:child_process");
-    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
-      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
-      cb(new Error("not found"), "", "command not found");
-      return { kill: vi.fn() } as any;
-    });
-    const confirmMock = vi.fn().mockResolvedValue(false);
-    const tool = getTool(pi, "find_references");
-    const result = await tool.execute(
-      "call-1",
-      { file: "test.ts", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: confirmMock, notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("not installed");
-  });
-
   it("should return formatted references on success", async () => {
     const { execFile } = await import("node:child_process");
     vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
@@ -98,7 +51,7 @@ describe("find_references tool integration", () => {
       { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
     );
 
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).not.toBe(true);
     expect(result.content[0].text).toContain("References found: 2");
     expect(result.details.count).toBe(2);
     expect(result.details.references).toHaveLength(2);

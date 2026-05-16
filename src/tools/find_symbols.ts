@@ -7,14 +7,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
 import type { LspClient } from "../lsp-client-methods.js";
 import {
-  toolError,
-  uriToFilePath,
   ensureServerInstalled,
-  parseSymbolKind,
-  SYMBOL_KIND_NAMES,
+} from "./preamble.js";
+import {
   MAX_SYMBOL_RESULTS,
-  sanitizeError,
 } from "./shared.js";
+import { toolError, parseSymbolKind, SYMBOL_KIND_NAMES, sanitizeError } from "./formatting.js";
+import { uriToFilePath } from "./paths.js";
 import * as fs from "node:fs";
 import { LANGUAGE_SERVERS, languageFromPath, isServerInstalled } from "../language-config.js";
 
@@ -121,12 +120,14 @@ export function registerFindSymbolsTool(
         const symbols = Array.isArray(result) ? result : [];
 
         let filtered = symbols;
+        let kindWarning: string | undefined;
         if (params.kind) {
           const kindNum = parseSymbolKind(params.kind);
           if (kindNum !== undefined) {
             filtered = symbols.filter(s => s.kind === kindNum);
+          } else {
+            kindWarning = `"${params.kind}" is not a valid symbol kind. Showing all results.`;
           }
-          // If kindNum is undefined (invalid kind name), don't filter — show all with a note
         }
 
         if (filtered.length === 0) {
@@ -149,8 +150,9 @@ export function registerFindSymbolsTool(
 
         const more = filtered.length > MAX_SYMBOL_RESULTS ? `\n  ... and ${filtered.length - MAX_SYMBOL_RESULTS} more` : "";
 
+        const suffix = kindWarning ? ` — ${kindWarning}` : "";
         const countLabel = params.kind
-          ? `Symbols matching "${params.query}" (kind: ${params.kind}): ${filtered.length}`
+          ? `Symbols matching "${params.query}" (kind: ${params.kind}): ${filtered.length}${suffix}`
           : `Symbols matching "${params.query}": ${filtered.length}`;
 
         return {

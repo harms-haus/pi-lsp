@@ -8,14 +8,12 @@ import type { LspManager } from "../lsp-manager.js";
 import type { TextDocumentEdit, TextEdit, Range } from "vscode-languageserver-types";
 import * as fs from "node:fs";
 import {
-  executePreamble,
-  toolError,
-  uriToFilePath,
   applyEdits,
   buildDiff,
-  sanitizeError,
-  isWithinWorkspace,
 } from "./shared.js";
+import { executePreamble } from "./preamble.js";
+import { toolError, sanitizeError } from "./formatting.js";
+import { uriToFilePath, isWithinWorkspace } from "./paths.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),

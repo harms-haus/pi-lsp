@@ -188,4 +188,63 @@ describe("LspClient JSON-RPC parsing", () => {
     (client as any).handleData(body.slice(10));
     expect(onNotification).toHaveBeenCalledWith("test", {});
   });
+
+  it("should warn on oversized messages", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = JSON.stringify({ jsonrpc: "2.0", method: "test", params: {} });
+    // Use Content-Length > MAX_MESSAGE_SIZE (10*1024*1024)
+    const message = `Content-Length: ${10 * 1024 * 1024 + 1}\r\n\r\n${body}`;
+
+    (client as any).handleData(message);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Dropping oversized message"),
+    );
+    // Buffer should be cleared
+    expect((client as any).buffer).toBe("");
+    expect((client as any).contentLength).toBe(-1);
+
+    warnSpy.mockRestore();
+  });
+
+  it("should reject pending requests when process exits", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    // Send a request that won't get a response
+    const resultPromise = h.client.request("textDocument/hover", {});
+
+    // Emit exit on the mock process
+    h.emitExit(1, null);
+
+    await expect(resultPromise).rejects.toThrow("LSP server exited with code 1");
+  });
+
+  it("should handle malformed JSON body", () => {
+    const body = "not valid json at all";
+    const message = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
+
+    // Should not throw
+    expect(() => {
+      (client as any).handleData(message);
+    }).not.toThrow();
+
+    // No notification should be dispatched
+    expect(onNotification).not.toHaveBeenCalled();
+  });
+
+  it("should update lastActive on request", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    const before = h.server.lastActive;
+    // Tiny delay to ensure time difference
+    await new Promise((r) => setTimeout(r, 1));
+
+    h.client.request("textDocument/hover", {});
+
+    expect(h.server.lastActive).toBeGreaterThanOrEqual(before);
+  });
 });

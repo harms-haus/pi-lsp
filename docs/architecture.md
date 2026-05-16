@@ -74,24 +74,39 @@ pi-lsp is a pi extension that integrates the Language Server Protocol (LSP) into
 │             ▲                                                               │
 │             │ types from lsp-protocol.ts                                     │
 │  ┌──────────┴──────────────────────────────────────────────────────────┐    │
-│  │                   src/tools/ (11 tool modules)                      │    │
+│  │            src/tools/ (11 tool modules + shared utilities)            │    │
 │  │                                                                     │    │
-│  │  shared.ts ── executePreamble() (10/11 tools)                       │    │
-│  │             ├── resolveFile() ──► languageFromPath()                │    │
-│  │             ├── ensureServerInstalled() ──► isServerInstalled()     │    │
-│  │             ├── manager.getClientForConfig()                        │    │
-│  │             └── manager.ensureFileOpen()                            │    │
+│  │  [Shared utility layer — 4 modules]                                 │    │
+│  │    preamble.ts  ── executePreamble() (10/11 tools)                  │    │
+│  │                  ├── resolveFile() ──► languageFromPath() (paths.ts)│    │
+│  │                  ├── ensureServerInstalled() ──► isServerInstalled() │    │
+│  │                  ├── manager.getClientForConfig()                   │    │
+│  │                  └── manager.ensureFileOpen()                       │    │
+│  │    paths.ts    ── resolveFile, uriToFilePath, filePathToUri,         │    │
+│  │                  isWithinWorkspace, flattenLocations, formatLocations│    │
+│  │    formatting.ts ── SEVERITY_NAMES, SYMBOL_KIND_NAMES, parseSymbol- │    │
+│  │                  Kind, countSeverities, formatDiagnosticLine,       │    │
+│  │                  toolError, sanitizeError                           │    │
+│  │    shared.ts  ── applyEdits, buildDiff, MAX_SYMBOL_RESULTS          │    │
+│  │                  + re-exports from paths, formatting, preamble       │    │
 │  │                                                                     │    │
+│  │  [Location-tool factory — shared by 4 tools]                        │    │
+│  │    location-tool-factory.ts ── registerLocationTool()                │    │
+│  │      (preamble → LSP call → flatten/format locations)                │    │
+│  │      Used by: find_definition, find_references,                      │    │
+│  │               find_implementations, find_type_definition             │    │
+│  │                                                                     │    │
+│  │  [Individual tool modules]                                          │    │
 │  │  diagnostics.ts ── manager.getDiagnostics() ──► format summary      │    │
-│  │  find_references.ts ── client.findReferences() ──► 1→0 index conv   │    │
-│  │  find_definition.ts ── client.gotoDefinition() ──► 1→0 index conv   │    │
+│  │  find_references.ts ──► location-tool-factory (client.findReferences)│    │
+│  │  find_definition.ts ──► location-tool-factory (client.gotoDefinition)│    │
 │  │  rename_symbol.ts ── client.prepareRename() + rename() ──► patch    │    │
 │  │  find_symbols.ts ── client.workspaceSymbol() (special: no preamble) │    │
 │  │  find_calls.ts ── prepareCallHierarchy() + incoming/outgoing        │    │
 │  │  find_document_symbols.ts ── client.documentSymbol()                │    │
 │  │  hover.ts ── client.hover() ──► 1→0 index conv                      │    │
-│  │  find_implementations.ts ── client.findImplementations() ──► 1→0    │    │
-│  │  find_type_definition.ts ── client.findTypeDefinition() ──► 1→0     │    │
+│  │  find_implementations.ts ──► location-tool-factory (findImplement.) │    │
+│  │  find_type_definition.ts ──► location-tool-factory (findTypeDef.)   │    │
 │  │  find_type_hierarchy.ts ── prepareTypeHierarchy() + super/subtypes  │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                             │
@@ -127,18 +142,22 @@ Data flows:
 | `src/types-global.d.ts` | Ambient type declarations for pi runtime & TypeBox | Module augmentations for `typebox` and `@earendil-works/pi-coding-agent` | — (declaration only) |
 | `src/language-config.ts` | 33 language server configs; extension→language mapping; install detection | `LANGUAGE_SERVERS`, `getConfigForExtension()`, `languageFromPath()`, `isServerInstalled()` | `./types.js` |
 | `src/diagnostics.ts` | Auto-trigger diagnostics hook on write/edit tool results | `registerDiagnosticsHook(pi, getManager)` — `getManager: () => LspManager \| null` | `./lsp-manager.js`, `./language-config.js` |
-| `src/tools/shared.ts` | Shared utilities: preamble, error builder, URI conversion, diff generation, path validation, constants | `executePreamble()`, `toolError()`, `resolveFile()`, `uriToFilePath()`, `filePathToUri()`, `ensureServerInstalled()`, `applyEdits()`, `buildDiff()`, `flattenLocations()`, `formatLocations()`, `countSeverities()`, `formatDiagnosticLine()`, `isWithinWorkspace()`, `MAX_SYMBOL_RESULTS` (= 50), `SEVERITY_NAMES`, `SYMBOL_KIND_NAMES`, `parseSymbolKind()`, `sanitizeError()`, `PreambleResult` | `../lsp-manager.js`, `../lsp-client-methods.js`, `../language-config.js`, `../types.js` |
-| `src/tools/diagnostics.ts` | `lsp_diagnostics` tool registration | `registerDiagnosticsTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_references.ts` | `find_references` tool registration | `registerFindReferencesTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_definition.ts` | `find_definition` tool registration | `registerFindDefinitionTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_symbols.ts` | `find_symbols` tool registration (workspace-wide search) | `registerFindSymbolsTool(pi, getManager, getCwd)` | `./shared.js`, `../language-config.js` |
-| `src/tools/find_calls.ts` | `find_calls` tool registration | `registerFindCallsTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/rename_symbol.ts` | `rename_symbol` tool registration | `registerRenameSymbolTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_document_symbols.ts` | `find_document_symbols` tool registration | `registerFindDocumentSymbolsTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/hover.ts` | `hover` tool registration | `registerHoverTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_implementations.ts` | `find_implementations` tool registration | `registerFindImplementationsTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_type_definition.ts` | `find_type_definition` tool registration | `registerFindTypeDefinitionTool(pi, getManager, getCwd)` | `./shared.js` |
-| `src/tools/find_type_hierarchy.ts` | `find_type_hierarchy` tool registration | `registerFindTypeHierarchyTool(pi, getManager, getCwd)` | `./shared.js` |
+| `src/tools/paths.ts` | Path/URI utilities: resolution, conversion, workspace boundary validation, location formatting | `resolveFile()`, `uriToFilePath()`, `filePathToUri()`, `isWithinWorkspace()`, `flattenLocations()`, `formatLocations()` | `node:fs`, `node:path`, `node:url`, `vscode-languageserver-types` |
+| `src/tools/formatting.ts` | Diagnostic formatting, symbol kind mappings, error sanitization, standard error response builders | `SEVERITY_NAMES`, `SYMBOL_KIND_NAMES`, `parseSymbolKind()`, `countSeverities()`, `formatDiagnosticLine()`, `sanitizeError()`, `toolError()` | — (pure functions, no external deps) |
+| `src/tools/preamble.ts` | Shared preamble logic: server install/start, file open, client acquisition | `executePreamble()`, `ensureServerInstalled()`, `PreambleResult` (type) | `../lsp-manager.js`, `../lsp-client-methods.js`, `../language-config.js`, `../types.js`, `./paths.js` |
+| `src/tools/shared.ts` | Text/diff utilities (`applyEdits`, `buildDiff`, `MAX_SYMBOL_RESULTS`) + **re-exports** from `paths.ts`, `formatting.ts`, `preamble.ts` for backward compatibility | `applyEdits()`, `buildDiff()`, `MAX_SYMBOL_RESULTS` (= 50), plus all exports from `paths.ts`, `formatting.ts`, `preamble.ts` | `./paths.js`, `./formatting.js`, `./preamble.js` |
+| `src/tools/location-tool-factory.ts` | Factory for location-based tools: preamble → LSP call → flatten/format locations | `registerLocationTool()` | `./preamble.js`, `./formatting.js`, `./paths.js`, `typebox` |
+| `src/tools/diagnostics.ts` | `lsp_diagnostics` tool registration | `registerDiagnosticsTool(pi, getManager, getCwd)` | `./preamble.js`, `./formatting.js`, `./paths.js` |
+| `src/tools/find_references.ts` | `find_references` tool registration | `registerFindReferencesTool(pi, getManager, getCwd)` | `./location-tool-factory.js` |
+| `src/tools/find_definition.ts` | `find_definition` tool registration | `registerFindDefinitionTool(pi, getManager, getCwd)` | `./location-tool-factory.js` |
+| `src/tools/find_symbols.ts` | `find_symbols` tool registration (workspace-wide search) | `registerFindSymbolsTool(pi, getManager, getCwd)` | `./preamble.js`, `./shared.js`, `./formatting.js`, `./paths.js`, `../language-config.js` |
+| `src/tools/find_calls.ts` | `find_calls` tool registration | `registerFindCallsTool(pi, getManager, getCwd)` | `./preamble.js`, `./formatting.js`, `./paths.js` |
+| `src/tools/rename_symbol.ts` | `rename_symbol` tool registration | `registerRenameSymbolTool(pi, getManager, getCwd)` | `./shared.js`, `./preamble.js`, `./formatting.js`, `./paths.js` |
+| `src/tools/find_document_symbols.ts` | `find_document_symbols` tool registration | `registerFindDocumentSymbolsTool(pi, getManager, getCwd)` | `./preamble.js`, `./formatting.js`, `vscode-languageserver-types` |
+| `src/tools/hover.ts` | `hover` tool registration | `registerHoverTool(pi, getManager, getCwd)` | `./preamble.js`, `./formatting.js`, `vscode-languageserver-types` |
+| `src/tools/find_implementations.ts` | `find_implementations` tool registration | `registerFindImplementationsTool(pi, getManager, getCwd)` | `./location-tool-factory.js` |
+| `src/tools/find_type_definition.ts` | `find_type_definition` tool registration | `registerFindTypeDefinitionTool(pi, getManager, getCwd)` | `./location-tool-factory.js` |
+| `src/tools/find_type_hierarchy.ts` | `find_type_hierarchy` tool registration | `registerFindTypeHierarchyTool(pi, getManager, getCwd)` | `./preamble.js`, `./formatting.js`, `./paths.js` |
 
 ---
 
@@ -160,17 +179,17 @@ index.ts
   ├── diagnostics.ts
   │     ├── lsp-manager.ts  (→ see above)
   │     └── language-config.ts  (→ see above)
-  ├── tools/diagnostics.ts       ──► tools/shared.ts  (→ see above)
-  ├── tools/find_references.ts   ──► tools/shared.ts  (→ see above)
-  ├── tools/find_definition.ts   ──► tools/shared.ts  (→ see above)
-  ├── tools/find_symbols.ts      ──► tools/shared.ts (utilities only, no executePreamble) + language-config.ts
-  ├── tools/find_calls.ts        ──► tools/shared.ts  (→ see above)
-  ├── tools/rename_symbol.ts     ──► tools/shared.ts  (→ see above)
-  ├── tools/find_document_symbols.ts ──► tools/shared.ts  (→ see above)
-  ├── tools/hover.ts             ──► tools/shared.ts  (→ see above)
-  ├── tools/find_implementations.ts ──► tools/shared.ts  (→ see above)
-  ├── tools/find_type_definition.ts ──► tools/shared.ts  (→ see above)
-  └── tools/find_type_hierarchy.ts ──► tools/shared.ts  (→ see above)
+  ├── tools/diagnostics.ts       ──► tools/preamble.js, tools/formatting.js, tools/paths.js
+  ├── tools/find_references.ts   ──► tools/location-tool-factory.js ──► preamble, formatting, paths
+  ├── tools/find_definition.ts   ──► tools/location-tool-factory.js (→ see above)
+  ├── tools/find_symbols.ts      ──► tools/preamble.js, tools/shared.js (MAX_SYMBOL_RESULTS), tools/formatting.js, tools/paths.js + language-config.ts
+  ├── tools/find_calls.ts        ──► tools/preamble.js, tools/formatting.js, tools/paths.js
+  ├── tools/rename_symbol.ts     ──► tools/shared.js (applyEdits, buildDiff), tools/preamble.js, tools/formatting.js, tools/paths.js
+  ├── tools/find_document_symbols.ts ──► tools/preamble.js, tools/formatting.js
+  ├── tools/hover.ts             ──► tools/preamble.js, tools/formatting.js
+  ├── tools/find_implementations.ts ──► tools/location-tool-factory.js (→ see above)
+  ├── tools/find_type_definition.ts ──► tools/location-tool-factory.js (→ see above)
+  └── tools/find_type_hierarchy.ts ──► tools/preamble.js, tools/formatting.js, tools/paths.js
 ```
 
 **Import characteristics:**
@@ -179,8 +198,12 @@ index.ts
 - **`lsp-client.ts`** is the base transport layer — it imports `types.ts`, `lsp-protocol.ts`, and `node:child_process`.
 - **`lsp-client-methods.ts`** extends `LspClient` with typed LSP method wrappers. It imports from `lsp-client.ts` and `lsp-protocol.ts`.
 - **`lsp-protocol.ts`** defines JSON-RPC message types and minimal LSP parameter/result interfaces.
-- **`tools/shared.ts`** is the shared utility layer. Ten of eleven file-based tools import it. It imports from the manager, client, and language-config layers.
-- **`tools/find_symbols.ts`** is the only tool that bypasses `executePreamble()` — it imports utility functions from `shared.ts` (`toolError`, `uriToFilePath`, etc.) but implements its own server discovery logic using `manager.getClientMap()` and `language-config.ts`.
+- **`tools/shared.ts`** re-exports from `paths.ts`, `formatting.ts`, and `preamble.ts` for backward compatibility. It directly owns `applyEdits()`, `buildDiff()`, and `MAX_SYMBOL_RESULTS`. Only `rename_symbol.ts` and `find_symbols.ts` still import from `shared.ts` directly (for `applyEdits`/`buildDiff` and `MAX_SYMBOL_RESULTS` respectively); all other tools import from the specific submodules.
+- **`tools/paths.ts`** provides path/URI conversion and location formatting. Imported by most tools.
+- **`tools/formatting.ts`** provides diagnostic formatting, symbol kind mappings, and error builders. Imported by most tools.
+- **`tools/preamble.ts`** provides `executePreamble()` and `ensureServerInstalled()`. Imported by 9 of 11 tools (the 4 location tools import it indirectly via `location-tool-factory.ts`).
+- **`tools/location-tool-factory.ts`** provides `registerLocationTool()`, a factory that encapsulates the preamble → LSP call → flatten/format pattern. Used by `find_definition`, `find_references`, `find_implementations`, and `find_type_definition`.
+- **`tools/find_symbols.ts`** is the only tool that bypasses `executePreamble()` — it imports utility functions from `preamble.ts`, `formatting.ts`, and `paths.ts` directly but implements its own server discovery logic using `manager.getClientMap()` and `language-config.ts`.
 
 ---
 
@@ -601,7 +624,7 @@ export function registerDiagnosticsTool(
 
 ## 9. executePreamble Flow
 
-Ten of the eleven tools share a common preamble in `src/tools/shared.ts`. The sole exception is **`find_symbols`**, which operates workspace-wide and implements its own server discovery logic using `manager.getClientMap()`.
+Ten of the eleven tools share a common preamble defined in `src/tools/preamble.ts` (re-exported via `src/tools/shared.ts` for backward compatibility). The sole exception is **`find_symbols`**, which operates workspace-wide and implements its own server discovery logic using `manager.getClientMap()`.
 
 **Tools that use `executePreamble()`:**
 

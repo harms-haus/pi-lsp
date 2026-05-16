@@ -7,12 +7,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
 import {
   executePreamble,
-  toolError,
-  uriToFilePath,
-  countSeverities,
-  formatDiagnosticLine,
-  sanitizeError,
-} from "./shared.js";
+} from "./preamble.js";
+import { toolError, countSeverities, formatDiagnosticLine, sanitizeError } from "./formatting.js";
+import { uriToFilePath } from "./paths.js";
 
 const Schema = Type.Object({
   file: Type.Optional(Type.String({ description: "Path to the file to check" })),

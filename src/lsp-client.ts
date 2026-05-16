@@ -90,6 +90,7 @@ export class LspClient {
 
         this.contentLength = parseInt(match[1], 10);
         if (this.contentLength > MAX_MESSAGE_SIZE || this.contentLength < 0) {
+          console.warn(`[pi-lsp] Dropping oversized message (${this.contentLength} bytes, max ${MAX_MESSAGE_SIZE})`);
           this.buffer = "";
           this.contentLength = -1;
           return;

@@ -26,12 +26,34 @@ Key settings:
 | `setupFiles` | `tests/setup.ts` | Global mocking runs before every test file |
 | `globals` | `true` | `describe`, `it`, `expect`, `vi`, etc. are globally available |
 
-**Current status:** 106 passing, 7 skipped (113 total) across 16 test files.
+**Current status:** 284 passing across 18 test files.
 
-The 7 skipped tests fall into three categories:
-- **5 in `lsp-client.test.ts`** — require a full process mock integration (request/response lifecycle, timeouts). Currently blocked by the global `child_process` mock.
-- **1 in `language-config.test.ts`** — `isServerInstalled` timeout handling, which requires async delay testing.
-- **1 in `tool-diagnostics.test.ts`** — requires full integration with `languageFromPath` without timing out.
+### Coverage Thresholds
+
+The project enforces minimum coverage thresholds in `vitest.config.ts`:
+
+```ts
+coverage: {
+  provider: "v8",
+  include: ["src/**/*.ts"],
+  exclude: ["src/types-global.d.ts"],
+  thresholds: {
+    statements: 85,
+    branches: 75,
+    functions: 80,
+    lines: 85,
+  },
+},
+```
+
+| Metric | Threshold |
+|--------|-----------|
+| Statements | 85% |
+| Branches | 75% |
+| Functions | 80% |
+| Lines | 85% |
+
+Run `npm run test:coverage` to check. The build fails if any threshold is not met.
 
 ---
 
@@ -51,7 +73,7 @@ vi.mock("node:child_process", () => ({
 
 This prevents any test from accidentally spawning a real LSP server process. Individual test files can selectively re-import and configure the mock using `vi.mocked(exec)` as demonstrated in `language-config.test.ts`.
 
-**Important:** Because `spawn` is mocked globally, tests that need to exercise real process communication (like the LSP request/response lifecycle in `lsp-client.test.ts`) must use the `createMockLspServer()` helper instead of relying on `spawn`. Five tests in that file remain skipped until full process-mock integration is added.
+**Important:** Because `spawn` is mocked globally, tests that need to exercise real process communication (like the LSP request/response lifecycle in `lsp-client.test.ts`) must use the `createClientWithMock()` helper instead of relying on `spawn`.
 
 ---
 
@@ -86,41 +108,33 @@ export function createTestServerInstance(config?: LspServerConfig): LspServerIns
 | `initialized` | `false` |
 | `capabilities` | `null` |
 
-### `mock-lsp-server.ts` — Fake LSP Server Process
+### `create-client-with-mock.ts` — LspClient Test Harness
 
-Creates an EventEmitter-based mock that simulates a real LSP server process communicating over stdio with Content-Length–delimited JSON-RPC messages:
+Creates an `LspClient` wired to a fully-controllable mock child process. The harness intercepts `child_process.spawn` and returns a mock process that tests can drive programmatically:
 
 ```ts
-export function createMockLspServer() → {
-  mockProcess: ChildProcess,   // Fake process with stdin, stdout, stderr
-  respond(id, result),         // Send a JSON-RPC response to stdout
-  respondError(id, code, msg), // Send a JSON-RPC error response
-  sendNotification(method, params), // Send a server→client notification
-  getSentMessages(),           // Returns all JSON messages written to stdin
-  stdoutEmitter,               // EventEmitter for manual control
-  stderrEmitter,
+export function createClientWithMock() → {
+  client: LspClient,         // Real LspClient instance connected to mock
+  config: LspServerConfig,   // Test server config (TypeScript)
+  getSentMessages(),         // Returns all JSON messages written to stdin
+  sendToClient(msg),         // Push a JSON-RPC message into client's handleData()
+  autoRespond(),             // Auto-respond to initialize/shutdown
 }
 ```
-
-**Auto-initialize:** When `stdin.write()` receives a message with `method === "initialize"`, the mock automatically responds with `{ capabilities: {} }`. This eliminates boilerplate in tests that initialize clients.
 
 **Typical usage:**
 
 ```ts
-const { mockProcess, respond, sendNotification, getSentMessages } = createMockLspServer();
-
-// The mock is passed where a real ChildProcess would be
-vi.mocked(spawn).mockReturnValue(mockProcess);
+const h = createClientWithMock();
+h.autoRespond();
+await h.client.startProcess(h.config);
 
 // Inspect what the client sent
-const messages = getSentMessages();
+const messages = h.getSentMessages();
 expect(messages[0].method).toBe("initialize");
 
-// Simulate the server sending a notification back
-sendNotification("textDocument/publishDiagnostics", {
-  uri: "file:///test.ts",
-  diagnostics: [{ severity: 1, message: "Error" }],
-});
+// Simulate a server response
+h.sendToClient({ jsonrpc: "2.0", id: 1, result: { /* ... */ } });
 ```
 
 ### `mock-extension-api.ts` — Fake Pi Extension API
@@ -158,9 +172,27 @@ const result = await tool.execute("call-1", { file: "test.ts" }, ...);
 
 ## Unit Tests
 
-### `tests/unit/shared.test.ts` (28 tests, all passing)
+### `tests/unit/lsp-client-methods.test.ts` (29 tests, all passing)
 
-Tests pure utility functions from `src/tools/shared.js`:
+Tests the high-level LSP method wrappers in `src/lsp-client-methods.js` using the `createClientWithMock()` harness:
+
+| Describe Block | Methods Tested | Coverage |
+|----------------|---------------|----------|
+| Initialization | `initialize()`, `shutdown()` | Initialize with/without root URI, shutdown lifecycle |
+| Document synchronization | `didOpen()`, `didChange()`, `didClose()` | Text document sync notifications |
+| Language features | `gotoDefinition()`, `findReferences()`, `hover()`, `documentSymbol()`, `workspaceSymbol()`, `findImplementations()`, `findTypeDefinition()` | Request/response with mocked results |
+| Rename | `prepareRename()`, `rename()` | Two-phase rename flow |
+| Call hierarchy | `prepareCallHierarchy()`, `incomingCalls()`, `outgoingCalls()` | Call hierarchy navigation |
+| Type hierarchy | `prepareTypeHierarchy()`, `supertypes()`, `subtypes()` | Type hierarchy navigation |
+| Utilities | `ensureFileOpen()`, `getSemanticTokens()` | File tracking, token requests |
+
+Each test starts a mock process, sends `initialize`, and verifies the correct JSON-RPC request is dispatched and the response is returned to the caller.
+
+---
+
+### `tests/unit/shared.test.ts` (102 tests, all passing)
+
+Tests pure utility functions from `src/tools/shared.js` (which re-exports from `paths.ts`, `formatting.ts`, and `preamble.ts`):
 
 | Describe Block | Functions Tested | Coverage |
 |----------------|-----------------|----------|
@@ -180,7 +212,7 @@ Tests `src/language-config.js`:
 | `getConfigForExtension` | `getConfigForExtension()` | Returns full config for `.ts`/`.py`, `undefined` for unknown, verifies all 7 config fields are present |
 | `isServerInstalled` | `isServerInstalled()` | Success case, failure case, thrown exception case, verifies correct `detectCommand` is called with 10s timeout. **Skipped:** timeout handling (requires async delay) |
 
-### `tests/unit/lsp-client.test.ts` (12 tests, 7 passing, 5 skipped)
+### `tests/unit/lsp-client.test.ts` (17 tests, all passing)
 
 Tests JSON-RPC message parsing in `LspClient` by calling the private `handleData()` method directly via `(client as any).handleData(...)`:
 
@@ -194,17 +226,24 @@ Tests JSON-RPC message parsing in `LspClient` by calling the private `handleData
 | Invalid message (no Content-Length) | Malformed input → no throw, no callback |
 | Buffer partial body content | Header → partial body → rest of body → callback fires only when complete |
 
-**Skipped (5):** request/response lifecycle, error responses, sending requests, sending notifications, timeout handling. These require a full process mock that connects `LspClient` to `createMockLspServer()`.
 
-### `tests/unit/lsp-manager.test.ts` (8 tests, all passing)
 
-Smoke tests for `LspManager` class API surface:
+### `tests/unit/lsp-manager.test.ts` (44 tests, all passing)
 
-- Verifies `getStatus()` returns empty array initially
-- Verifies existence and type of all public methods: `getClientMap`, `getDiagnostics`, `handleDiagnosticsNotification`, `stopServer`, `stopAll`
-- Verifies `handleDiagnosticsNotification` can be called without throwing
+Tests the `LspManager` class — server lifecycle, client management, file tracking, and idle timeout:
 
-Uses a 60-second idle timeout for deterministic cleanup in `afterEach` via `await manager.stopAll()`.
+| Describe Block | Coverage |
+|----------------|----------|
+| `getStatus()` | Returns empty array initially, shows running servers |
+| `getClientForConfig()` | Creates clients, reuses existing, handles failures |
+| `ensureFileOpen()` | Opens files, tracks versions, re-opens on version mismatch |
+| `stopServer()` / `stopAll()` | Clean shutdown, removes client from map |
+| `handleDiagnosticsNotification()` | Stores diagnostics, emits events |
+| Idle timeout | Auto-stops after inactivity, resets on activity |
+
+### `tests/unit/index.test.ts` (17 tests, all passing)
+
+Tests the extension entry point (`src/index.js`) — tool and command registration, lifecycle hooks, and the `/lsp-status` command handler.
 
 ### `tests/unit/diagnostics.test.ts` (10 tests, all passing)
 

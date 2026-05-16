@@ -5,7 +5,9 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, uriToFilePath, SYMBOL_KIND_NAMES } from "./shared.js";
+import { executePreamble } from "./preamble.js";
+import { SYMBOL_KIND_NAMES } from "./formatting.js";
+import { uriToFilePath } from "./paths.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),

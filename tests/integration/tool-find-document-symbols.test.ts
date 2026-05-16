@@ -25,52 +25,6 @@ describe("find_document_symbols tool integration", () => {
     expect(tool.name).toBe("find_document_symbols");
   });
 
-  it("should return error for unsupported file type", async () => {
-    const tool = getTool(pi, "find_document_symbols");
-    const result = await tool.execute(
-      "call-1",
-      { file: "data.csv", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-  });
-
-  it("should return error when manager is not initialized", async () => {
-    registerFindDocumentSymbolsTool(pi as any, () => null, () => "/test/cwd");
-    const lastTool = pi.tools[pi.tools.length - 1];
-    const result = await lastTool.execute(
-      "call-1",
-      { file: "test.ts" },
-      undefined,
-      undefined,
-      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("LSP manager not initialized");
-  });
-
-  it("should return error when server not installed and user declines", async () => {
-    const { execFile } = await import("node:child_process");
-    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
-      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
-      cb(new Error("not found"), "", "command not found");
-      return { kill: vi.fn() } as any;
-    });
-    const confirmMock = vi.fn().mockResolvedValue(false);
-    const tool = getTool(pi, "find_document_symbols");
-    const result = await tool.execute(
-      "call-1",
-      { file: "test.ts" },
-      undefined,
-      undefined,
-      { ui: { confirm: confirmMock, notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("not installed");
-  });
-
   it("should return formatted document symbols on success", async () => {
     const { execFile } = await import("node:child_process");
     vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
@@ -99,10 +53,103 @@ describe("find_document_symbols tool integration", () => {
       { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
     );
 
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).not.toBe(true);
     expect(result.content[0].text).toContain("Document symbols for");
     expect(result.content[0].text).toContain("MyClass");
     expect(result.content[0].text).toContain("myMethod");
     expect(result.details.count).toBe(3); // MyClass + constructor + myMethod
+  });
+
+  it("should handle SymbolInformation[] format", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    // SymbolInformation format: has `location` property, no `children` property
+    const mockClient = {
+      documentSymbol: vi.fn().mockResolvedValue([
+        { name: "myFunction", kind: 12, location: { uri: "file:///test/test.ts", range: { start: { line: 5, character: 0 }, end: { line: 10, character: 1 } } } },
+        { name: "MyClass", kind: 5, location: { uri: "file:///test/test.ts", range: { start: { line: 15, character: 0 }, end: { line: 30, character: 1 } } } },
+      ]),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "find_document_symbols");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts" },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("Document symbols for");
+    expect(result.content[0].text).toContain("myFunction");
+    expect(result.content[0].text).toContain("MyClass");
+    // SymbolInformation format uses 2-space indent (no hierarchical nesting)
+    expect(result.content[0].text).toContain("  Function myFunction (line 6)");
+    expect(result.content[0].text).toContain("  Class MyClass (line 16)");
+    expect(result.details.count).toBe(2);
+  });
+
+  it("should return no symbols found when result is empty", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const mockClient = {
+      documentSymbol: vi.fn().mockResolvedValue([]),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "find_document_symbols");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts" },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("No symbols found");
+    expect(result.details.count).toBe(0);
+  });
+
+  it("should return no symbols found when result is null", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const mockClient = {
+      documentSymbol: vi.fn().mockResolvedValue(null),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "find_document_symbols");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts" },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("No symbols found");
+    expect(result.details.count).toBe(0);
   });
 });

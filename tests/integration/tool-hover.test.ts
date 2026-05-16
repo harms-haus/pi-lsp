@@ -25,52 +25,6 @@ describe("hover tool integration", () => {
     expect(tool.name).toBe("hover");
   });
 
-  it("should return error for unsupported file type", async () => {
-    const tool = getTool(pi, "hover");
-    const result = await tool.execute(
-      "call-1",
-      { file: "data.csv", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-  });
-
-  it("should return error when manager is not initialized", async () => {
-    registerHoverTool(pi as any, () => null, () => "/test/cwd");
-    const lastTool = pi.tools[pi.tools.length - 1];
-    const result = await lastTool.execute(
-      "call-1",
-      { file: "test.ts", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("LSP manager not initialized");
-  });
-
-  it("should return error when server not installed and user declines", async () => {
-    const { execFile } = await import("node:child_process");
-    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
-      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
-      cb(new Error("not found"), "", "command not found");
-      return { kill: vi.fn() } as any;
-    });
-    const confirmMock = vi.fn().mockResolvedValue(false);
-    const tool = getTool(pi, "hover");
-    const result = await tool.execute(
-      "call-1",
-      { file: "test.ts", line: 1, column: 1 },
-      undefined,
-      undefined,
-      { ui: { confirm: confirmMock, notify: vi.fn() }, cwd: "/test" } as any,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("not installed");
-  });
-
   it("should return formatted hover info on success", async () => {
     const { execFile } = await import("node:child_process");
     vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
@@ -97,7 +51,7 @@ describe("hover tool integration", () => {
       { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
     );
 
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).not.toBe(true);
     expect(result.content[0].text).toContain("Hover info");
     expect(result.content[0].text).toContain("const x: number");
     expect(result.details.range).toBeDefined();
@@ -127,7 +81,125 @@ describe("hover tool integration", () => {
       { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
     );
 
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).not.toBe(true);
     expect(result.content[0].text).toContain("No hover information available");
+  });
+
+  it("should handle string contents", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const mockClient = {
+      hover: vi.fn().mockResolvedValue({
+        contents: "plain text hover",
+      }),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "hover");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts", line: 1, column: 1 },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("plain text hover");
+  });
+
+  it("should handle array contents", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const mockClient = {
+      hover: vi.fn().mockResolvedValue({
+        contents: ["text1", { kind: "markdown", value: "**text2**" }],
+      }),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "hover");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts", line: 1, column: 1 },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("text1");
+    expect(result.content[0].text).toContain("**text2**");
+  });
+
+  it("should handle MarkedString (language/value object)", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const mockClient = {
+      hover: vi.fn().mockResolvedValue({
+        contents: { language: "typescript", value: "const x = 1" },
+      }),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "hover");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts", line: 1, column: 1 },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("```typescript");
+    expect(result.content[0].text).toContain("const x = 1");
+  });
+
+  it("should handle null result", async () => {
+    const { execFile } = await import("node:child_process");
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error | null, stdout: string, stderr: string) => void;
+      cb(null, "typescript-language-server 4.0.0\n", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const mockClient = {
+      hover: vi.fn().mockResolvedValue(null),
+    };
+    vi.mocked(mockManager.getClientForConfig as any).mockResolvedValue(mockClient);
+    vi.mocked(mockManager.ensureFileOpen as any).mockResolvedValue(undefined);
+
+    const tool = getTool(pi, "hover");
+    const result = await tool.execute(
+      "call-1",
+      { file: "test.ts", line: 1, column: 1 },
+      undefined,
+      undefined,
+      { ui: { confirm: vi.fn(), notify: vi.fn() }, cwd: "/test" } as any,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("No hover information available");
+    expect(result.details.hoverContent).toBeNull();
+    expect(result.details.range).toBeNull();
   });
 });

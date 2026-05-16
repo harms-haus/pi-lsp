@@ -34,13 +34,8 @@ import type {
 } from "./lsp-protocol.js";
 import { LspClient as BaseLspClient } from "./lsp-client.js";
 
-// Re-export base client for convenience
-export type { BaseLspClient };
-
 // ── Constants (method-level) ──────────────────────────────────────────────
 
-/** Default timeout for LSP requests (30 seconds) */
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 /** Timeout for the initialize handshake (60 seconds) */
 const INITIALIZE_TIMEOUT_MS = 60_000;
 /** Timeout for graceful shutdown (5 seconds) */
@@ -101,7 +96,7 @@ export class LspClient extends BaseLspClient {
 
   /** Request diagnostics via pull model (LSP 3.17+) */
   async requestDiagnostics(uri: string): Promise<unknown> {
-    return this.request("textDocument/diagnostic", { textDocument: { uri } }, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request("textDocument/diagnostic", { textDocument: { uri } }, 30_000);
   }
 
   /** Go to definition */
@@ -110,7 +105,7 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<Location | Location[] | null>("textDocument/definition", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<Location | Location[] | null>("textDocument/definition", params, 30_000);
   }
 
   /** Find references */
@@ -120,7 +115,7 @@ export class LspClient extends BaseLspClient {
       position: { line, character: col },
       context: { includeDeclaration: true },
     };
-    return this.request<Location[] | null>("textDocument/references", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<Location[] | null>("textDocument/references", params, 30_000);
   }
 
   /** Prepare rename (returns valid rename range and placeholder) */
@@ -129,7 +124,7 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<Range | { range: Range; placeholder: string } | null>("textDocument/prepareRename", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<Range | { range: Range; placeholder: string } | null>("textDocument/prepareRename", params, 30_000);
   }
 
   /** Rename symbol */
@@ -139,13 +134,13 @@ export class LspClient extends BaseLspClient {
       position: { line, character: col },
       newName,
     };
-    return this.request<WorkspaceEdit | null>("textDocument/rename", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<WorkspaceEdit | null>("textDocument/rename", params, 30_000);
   }
 
   /** Workspace symbol search */
   async workspaceSymbol(query: string): Promise<SymbolInformation[] | WorkspaceSymbol[] | null> {
     const params: WorkspaceSymbolParams = { query };
-    return this.request<SymbolInformation[] | WorkspaceSymbol[] | null>("workspace/symbol", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<SymbolInformation[] | WorkspaceSymbol[] | null>("workspace/symbol", params, 30_000);
   }
 
   /** Prepare call hierarchy */
@@ -154,7 +149,7 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<CallHierarchyItem[] | null>("textDocument/prepareCallHierarchy", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<CallHierarchyItem[] | null>("textDocument/prepareCallHierarchy", params, 30_000);
   }
 
   /** Get incoming calls */
@@ -167,7 +162,7 @@ export class LspClient extends BaseLspClient {
     data?: unknown;
   }): Promise<CallHierarchyIncomingCall[] | null> {
     const params: CallHierarchyIncomingCallsParams = { item };
-    return this.request<CallHierarchyIncomingCall[] | null>("callHierarchy/incomingCalls", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<CallHierarchyIncomingCall[] | null>("callHierarchy/incomingCalls", params, 30_000);
   }
 
   /** Get outgoing calls */
@@ -180,12 +175,12 @@ export class LspClient extends BaseLspClient {
     data?: unknown;
   }): Promise<CallHierarchyOutgoingCall[] | null> {
     const params: CallHierarchyOutgoingCallsParams = { item };
-    return this.request<CallHierarchyOutgoingCall[] | null>("callHierarchy/outgoingCalls", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<CallHierarchyOutgoingCall[] | null>("callHierarchy/outgoingCalls", params, 30_000);
   }
 
   /** Document symbols */
   async documentSymbol(uri: string): Promise<DocumentSymbol[] | SymbolInformation[] | null> {
-    return this.request<DocumentSymbol[] | SymbolInformation[] | null>("textDocument/documentSymbol", { textDocument: { uri } }, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<DocumentSymbol[] | SymbolInformation[] | null>("textDocument/documentSymbol", { textDocument: { uri } }, 30_000);
   }
 
   /** Hover */
@@ -194,7 +189,7 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<Hover | null>("textDocument/hover", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<Hover | null>("textDocument/hover", params, 30_000);
   }
 
   /** Find implementations */
@@ -203,7 +198,7 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<Location | Location[] | null>("textDocument/implementation", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<Location | Location[] | null>("textDocument/implementation", params, 30_000);
   }
 
   /** Find type definition */
@@ -212,7 +207,7 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<Location | Location[] | null>("textDocument/typeDefinition", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<Location | Location[] | null>("textDocument/typeDefinition", params, 30_000);
   }
 
   /** Prepare type hierarchy */
@@ -221,19 +216,19 @@ export class LspClient extends BaseLspClient {
       textDocument: { uri },
       position: { line, character: col },
     };
-    return this.request<TypeHierarchyItem[] | null>("textDocument/prepareTypeHierarchy", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<TypeHierarchyItem[] | null>("textDocument/prepareTypeHierarchy", params, 30_000);
   }
 
   /** Get supertypes in type hierarchy */
   async typeHierarchySupertypes(item: TypeHierarchyItem, resolve?: number): Promise<TypeHierarchyItem[] | null> {
     const params: TypeHierarchySupertypesParams & { resolve?: number } = { item, ...(resolve !== undefined ? { resolve } : {}) };
-    return this.request<TypeHierarchyItem[] | null>("typeHierarchy/supertypes", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<TypeHierarchyItem[] | null>("typeHierarchy/supertypes", params, 30_000);
   }
 
   /** Get subtypes in type hierarchy */
   async typeHierarchySubtypes(item: TypeHierarchyItem, resolve?: number): Promise<TypeHierarchyItem[] | null> {
     const params: TypeHierarchySubtypesParams & { resolve?: number } = { item, ...(resolve !== undefined ? { resolve } : {}) };
-    return this.request<TypeHierarchyItem[] | null>("typeHierarchy/subtypes", params, DEFAULT_REQUEST_TIMEOUT_MS);
+    return this.request<TypeHierarchyItem[] | null>("typeHierarchy/subtypes", params, 30_000);
   }
 
   /** Shutdown the LSP server gracefully */
