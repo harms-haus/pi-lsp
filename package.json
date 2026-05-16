@@ -4,7 +4,13 @@
   "description": "LSP integration extension for pi — auto-diagnostics on edit, 11 LSP tools, auto-install, persistent servers with 5-min idle timeout, 33 language support",
   "type": "module",
   "license": "MIT",
-  "keywords": ["pi", "lsp", "language-server", "coding-agent", "extension"],
+  "keywords": [
+    "pi",
+    "lsp",
+    "language-server",
+    "coding-agent",
+    "extension"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
@@ -15,7 +21,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": ["src/", "skills/", "docs/", "README.md"],
+  "files": [
+    "src/",
+    "skills/",
+    "docs/",
+    "README.md"
+  ],
   "scripts": {
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
@@ -35,6 +46,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.7.0",
+    "@vitest/coverage-v8": "^4.1.6",
     "eslint": "^10.3.0",
     "typebox": "^1.1.38",
     "typescript": "^6.0.3",
