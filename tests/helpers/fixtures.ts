@@ -31,8 +31,5 @@ export function createTestServerInstance(config: LspServerConfig = TEST_TS_CONFI
     fileVersions: new Map(),
     diagnostics: new Map(),
     rootUri: null,
-    initialized: false,
-    initPromise: null,
-    capabilities: null,
   };
 }

@@ -5,7 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import { executePreamble, toolError, uriToFilePath, sanitizeError } from "./shared.js";
+import { executePreamble, toolError, flattenLocations, formatLocations, sanitizeError } from "./shared.js";
 
 const Schema = Type.Object({
   file: Type.String({ description: "Path to the file" }),
@@ -38,26 +38,18 @@ export function registerFindImplementationsTool(
 
       try {
         const result = await client.findImplementations(uri, params.line - 1, params.column - 1);
-        const locations: { uri: string; line: number; col: number }[] = Array.isArray(result)
-          ? result.map((loc) => ({
-              uri: loc.uri,
-              line: loc.range.start.line + 1,
-              col: loc.range.start.character + 1,
-            }))
-          : [];
-
-        const formatted = locations.length > 0
-          ? locations.map((l) => `  ${uriToFilePath(l.uri)}:${l.line}:${l.col}`).join("\n")
-          : "(none)";
+        const locations = flattenLocations(result);
+        const formatted = formatLocations(locations);
+        const mapped = locations.map((l) => ({ uri: l.uri, line: l.range.start.line + 1, col: l.range.start.character + 1 }));
 
         return {
-          content: [{ type: "text", text: `Implementations found: ${locations.length}\n\n${formatted}` }],
+          content: [{ type: "text", text: `Implementations found: ${mapped.length}\n\n${formatted}` }],
           details: {
             file: params.file,
             line: params.line,
             column: params.column,
-            implementations: locations,
-            count: locations.length,
+            implementations: mapped,
+            count: mapped.length,
           },
         };
       } catch (err) {

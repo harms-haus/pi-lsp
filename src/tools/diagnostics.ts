@@ -9,7 +9,8 @@ import {
   executePreamble,
   toolError,
   uriToFilePath,
-  SEVERITY_NAMES,
+  countSeverities,
+  formatDiagnosticLine,
   sanitizeError,
 } from "./shared.js";
 
@@ -62,28 +63,14 @@ export function registerDiagnosticsTool(
             if (diagnostics.length === 0) continue;
 
             const filePath = uri.startsWith("file://") ? uriToFilePath(uri) : uri;
-            let errorCount = 0;
-            let warningCount = 0;
-            let infoCount = 0;
-            for (const d of diagnostics) {
-              if (d.severity === 1) errorCount++;
-              else if (d.severity === 2) warningCount++;
-              else if (d.severity === 3 || d.severity === 4) infoCount++;
-            }
+            const { errors: errorCount, warnings: warningCount, info: infoCount } = countSeverities(diagnostics);
 
             totalErrors += errorCount;
             totalWarnings += warningCount;
             totalInfo += infoCount;
             totalDiags += diagnostics.length;
 
-            const lines = diagnostics.map((d) => {
-              const startLine = d.range.start.line + 1;
-              const startCol = d.range.start.character + 1;
-              const severity = SEVERITY_NAMES[d.severity ?? 0] ?? "?";
-              const source = d.source ? `[${d.source}] ` : "";
-              const code = d.code !== undefined ? ` (${d.code})` : "";
-              return `  ${severity}: ${startLine}:${startCol}: ${source}${d.message}${code}`;
-            });
+            const lines = diagnostics.map(formatDiagnosticLine);
 
             fileSections.push(
               `${filePath} (${errorCount} error(s), ${warningCount} warning(s), ${infoCount} info):\n` +
@@ -116,23 +103,9 @@ export function registerDiagnosticsTool(
 
       try {
         const diagnostics = await manager.getDiagnostics(filePath, params.refresh ?? false);
-        let errorCount = 0;
-        let warningCount = 0;
-        let infoCount = 0;
-        for (const d of diagnostics) {
-          if (d.severity === 1) errorCount++;
-          else if (d.severity === 2) warningCount++;
-          else if (d.severity === 3 || d.severity === 4) infoCount++;
-        }
+        const { errors: errorCount, warnings: warningCount, info: infoCount } = countSeverities(diagnostics);
 
-        const lines = diagnostics.map((d) => {
-          const startLine = d.range.start.line + 1;
-          const startCol = d.range.start.character + 1;
-          const severity = SEVERITY_NAMES[d.severity ?? 0] ?? "?";
-          const source = d.source ? `[${d.source}] ` : "";
-          const code = d.code !== undefined ? ` (${d.code})` : "";
-          return `  ${severity}: ${startLine}:${startCol}: ${source}${d.message}${code}`;
-        });
+        const lines = diagnostics.map(formatDiagnosticLine);
 
         const summary = `Diagnostics for ${params.file} (${config.language}):\n` +
           `${errorCount} error(s), ${warningCount} warning(s), ${infoCount} info message(s)\n\n` +

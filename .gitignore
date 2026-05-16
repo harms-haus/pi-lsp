@@ -1,3 +1,5 @@
 node_modules/
 .DS_Store
 .bifrost.yaml
+dist/
+coverage/

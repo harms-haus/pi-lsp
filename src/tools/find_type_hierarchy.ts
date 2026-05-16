@@ -38,6 +38,11 @@ export function registerFindTypeHierarchyTool(
 
       const { client, uri } = preamble.ok;
 
+      // Validate direction parameter
+      if (params.direction && params.direction !== "supertypes" && params.direction !== "subtypes" && params.direction !== "both") {
+        params.direction = "both";
+      }
+
       let prepareResult: Awaited<ReturnType<typeof client.prepareTypeHierarchy>>;
       try {
         prepareResult = await client.prepareTypeHierarchy(uri, params.line - 1, params.column - 1);
@@ -60,21 +65,21 @@ export function registerFindTypeHierarchyTool(
 
       const item = items[0];
       const typeName = item.name;
-      const direction = params.direction ?? "both";
+      const direction: string = (params.direction as string) || "both";
 
       let supertypes: typeof items = [];
       let subtypes: typeof items = [];
 
       if (direction === "supertypes" || direction === "both") {
         try {
-          const result = await client.typeHierarchySupertypes(item, params.depth ?? 2);
+          const result = await client.typeHierarchySupertypes(item, (params.depth as number) || 2);
           supertypes = Array.isArray(result) ? result : [];
         } catch { /* not supported */ }
       }
 
       if (direction === "subtypes" || direction === "both") {
         try {
-          const result = await client.typeHierarchySubtypes(item, params.depth ?? 2);
+          const result = await client.typeHierarchySubtypes(item, (params.depth as number) || 2);
           subtypes = Array.isArray(result) ? result : [];
         } catch { /* not supported */ }
       }

@@ -8,6 +8,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "./lsp-manager.js";
 import { languageFromPath } from "./language-config.js";
+import { countSeverities } from "./tools/shared.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -89,12 +90,7 @@ export function registerDiagnosticsHook(pi: ExtensionAPI, getManager: () => LspM
     for (const filePath of checkableFiles) {
       try {
         const diagnostics = await manager.getDiagnostics(filePath, true);
-        let errors = 0;
-        let warnings = 0;
-        for (const d of diagnostics) {
-          if (d.severity === 1) errors++;
-          else if (d.severity === 2) warnings++;
-        }
+        const { errors, warnings } = countSeverities(diagnostics);
 
         totalErrors += errors;
         totalWarnings += warnings;

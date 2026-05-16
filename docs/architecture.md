@@ -57,17 +57,22 @@ pi-lsp is a pi extension that integrates the Language Server Protocol (LSP) into
 │             │                                                               │
 │             ▼                                                               │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                        lsp-client.ts                                │    │
+│  │           lsp-client.ts + lsp-client-methods.ts                     │    │
 │  │                                                                     │    │
+│  │  [Base: lsp-client.ts]                                              │    │
 │  │  child_process.spawn(cmd, args) ──► stdio: [pipe, pipe, pipe]       │    │
 │  │  stdout stream ──► handleData() ──► parse headers + JSON body       │    │
 │  │  stdin ──► sendMessage() ──► Content-Length header + JSON body      │    │
 │  │  request(id, method, params) ──► pendingRequests.set(id, promise)   │    │
 │  │  handleMessage() ──► resolve/reject pending OR forward notification │    │
 │  │  shutdown() ──► "shutdown" request ──► "exit" notification           │    │
+│  │                                                                     │    │
+│  │  [Methods: lsp-client-methods.ts]                                   │    │
+│  │  Extends LspClient with typed wrappers: gotoDefinition,             │    │
+│  │  findReferences, rename, hover, documentSymbol, etc.                │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │             ▲                                                               │
-│             │ sends LSP requests                                            │
+│             │ types from lsp-protocol.ts                                     │
 │  ┌──────────┴──────────────────────────────────────────────────────────┐    │
 │  │                   src/tools/ (11 tool modules)                      │    │
 │  │                                                                     │    │
@@ -114,13 +119,15 @@ Data flows:
 | File | Responsibility | Public Exports | Imports From |
 |---|---|---|---|
 | `src/index.ts` | Extension entry point; lifecycle hooks, tool registration, status publishing | `default` function `(pi: ExtensionAPI) => void` | `./lsp-manager.js`, `./diagnostics.js`, `./tools/*.js` |
-| `src/lsp-manager.ts` | Server lifecycle: start/stop/idle, file tracking (200 cap), diagnostics cache | `LspManager` class | `./lsp-client.js`, `./language-config.js`, `./types.js` |
-| `src/lsp-client.ts` | JSON-RPC protocol layer: stdio framing, message parsing, request tracking | `LspClient` class | `./types.js` |
+| `src/lsp-manager.ts` | Server lifecycle: start/stop/idle, file tracking (200 cap), diagnostics cache | `LspManager` class | `./lsp-client-methods.js`, `./language-config.js`, `./types.js` |
+| `src/lsp-client.ts` | JSON-RPC protocol layer: stdio framing, message parsing, request tracking | `LspClient` class | `./types.js`, `./lsp-protocol.js` |
+| `src/lsp-client-methods.ts` | High-level LSP method wrappers (definition, references, hover, rename, etc.) | Re-exports `LspClient` from base | `./lsp-client.js`, `./lsp-protocol.js`, `./types.js` |
+| `src/lsp-protocol.ts` | JSON-RPC message types and minimal LSP parameter/result interfaces | `JsonRpcRequest`, `JsonRpcResponse`, etc. | `vscode-languageserver-types` |
 | `src/types.ts` | Shared type definitions: configs, state, tool params (11 tool param interfaces) | `LspServerConfig`, `ServerStatus`, `LspServerInstance`, `LspManagerState`, all `*Params` interfaces | `vscode-languageserver-types` (Diagnostic) |
 | `src/types-global.d.ts` | Ambient type declarations for pi runtime & TypeBox | Module augmentations for `typebox` and `@earendil-works/pi-coding-agent` | — (declaration only) |
 | `src/language-config.ts` | 33 language server configs; extension→language mapping; install detection | `LANGUAGE_SERVERS`, `getConfigForExtension()`, `languageFromPath()`, `isServerInstalled()` | `./types.js` |
 | `src/diagnostics.ts` | Auto-trigger diagnostics hook on write/edit tool results | `registerDiagnosticsHook(pi, getManager)` — `getManager: () => LspManager \| null` | `./lsp-manager.js`, `./language-config.js` |
-| `src/tools/shared.ts` | Shared utilities: preamble, error builder, URI conversion, diff generation, constants | `executePreamble()`, `toolError()`, `resolveFile()`, `uriToFilePath()`, `filePathToUri()`, `ensureServerInstalled()`, `applyEdits()`, `buildDiff()`, `MAX_SYMBOL_RESULTS` (= 50), `SEVERITY_NAMES`, `SYMBOL_KIND_NAMES`, `SYMBOL_KIND_BY_NAME`, `parseSymbolKind()`, `sanitizeError()`, `ToolUI`, `PreambleResult` | `../lsp-manager.js`, `../lsp-client.js`, `../language-config.js`, `../types.js` |
+| `src/tools/shared.ts` | Shared utilities: preamble, error builder, URI conversion, diff generation, path validation, constants | `executePreamble()`, `toolError()`, `resolveFile()`, `uriToFilePath()`, `filePathToUri()`, `ensureServerInstalled()`, `applyEdits()`, `buildDiff()`, `flattenLocations()`, `formatLocations()`, `countSeverities()`, `formatDiagnosticLine()`, `isWithinWorkspace()`, `MAX_SYMBOL_RESULTS` (= 50), `SEVERITY_NAMES`, `SYMBOL_KIND_NAMES`, `parseSymbolKind()`, `sanitizeError()`, `PreambleResult` | `../lsp-manager.js`, `../lsp-client-methods.js`, `../language-config.js`, `../types.js` |
 | `src/tools/diagnostics.ts` | `lsp_diagnostics` tool registration | `registerDiagnosticsTool(pi, getManager, getCwd)` | `./shared.js` |
 | `src/tools/find_references.ts` | `find_references` tool registration | `registerFindReferencesTool(pi, getManager, getCwd)` | `./shared.js` |
 | `src/tools/find_definition.ts` | `find_definition` tool registration | `registerFindDefinitionTool(pi, getManager, getCwd)` | `./shared.js` |
@@ -142,8 +149,11 @@ Data flows:
 ```
 index.ts
   ├── lsp-manager.ts
-  │     ├── lsp-client.ts
-  │     │     └── types.ts
+  │     ├── lsp-client-methods.ts
+  │     │     ├── lsp-client.ts
+  │     │     │     ├── types.ts
+  │     │     │     └── lsp-protocol.ts
+  │     │     └── lsp-protocol.ts
   │     ├── language-config.ts
   │     │     └── types.ts
   │     └── types.ts
@@ -164,9 +174,11 @@ index.ts
 ```
 
 **Import characteristics:**
-- **`index.ts`** is the sole entry point. It imports all tool modules and the manager but never imports `lsp-client.ts` or `language-config.ts` directly.
-- **`lsp-manager.ts`** is the central orchestrator. It imports `LspClient` and `languageFromPath`, and owns the `state.servers` and `clientMap` maps.
-- **`lsp-client.ts`** is a leaf module — it only imports `types.ts` and `node:child_process`.
+- **`index.ts`** is the sole entry point. It imports all tool modules and the manager but never imports `lsp-client.ts`, `lsp-client-methods.ts`, or `language-config.ts` directly.
+- **`lsp-manager.ts`** is the central orchestrator. It imports `LspClient` (from `lsp-client-methods.js`) and `languageFromPath`, and owns the `state.servers` and `clientMap` maps.
+- **`lsp-client.ts`** is the base transport layer — it imports `types.ts`, `lsp-protocol.ts`, and `node:child_process`.
+- **`lsp-client-methods.ts`** extends `LspClient` with typed LSP method wrappers. It imports from `lsp-client.ts` and `lsp-protocol.ts`.
+- **`lsp-protocol.ts`** defines JSON-RPC message types and minimal LSP parameter/result interfaces.
 - **`tools/shared.ts`** is the shared utility layer. Ten of eleven file-based tools import it. It imports from the manager, client, and language-config layers.
 - **`tools/find_symbols.ts`** is the only tool that bypasses `executePreamble()` — it imports utility functions from `shared.ts` (`toolError`, `uriToFilePath`, etc.) but implements its own server discovery logic using `manager.getClientMap()` and `language-config.ts`.
 

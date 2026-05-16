@@ -386,16 +386,23 @@ export const LANGUAGE_SERVERS: LspServerConfig[] = [
 // ── Helper functions ───────────────────────────────────────────────────────
 
 /** Find the LSP config for a given file extension */
-export function getConfigForExtension(ext: string): LspServerConfig | undefined {
+function getConfigForExtension(ext: string): LspServerConfig | undefined {
   return LANGUAGE_SERVERS.find((cfg) => cfg.extensions.includes(ext));
 }
 
 /** Determine language from a file path */
 export function languageFromPath(filePath: string): LspServerConfig | undefined {
   const dotIndex = filePath.lastIndexOf(".");
-  if (dotIndex === -1) return undefined;
-  const ext = filePath.slice(dotIndex);
-  return getConfigForExtension(ext);
+  if (dotIndex !== -1) {
+    const ext = filePath.slice(dotIndex);
+    return getConfigForExtension(ext);
+  }
+  // No extension found (e.g., "Dockerfile"): try matching the bare filename
+  const basename = filePath.split(/[/\\]/).pop();
+  if (basename) {
+    return LANGUAGE_SERVERS.find((cfg) => cfg.extensions.includes(basename));
+  }
+  return undefined;
 }
 
 /** Check if a language server is installed */

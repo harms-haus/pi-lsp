@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { LspClient } from "../../src/lsp-client.js";
+import { LspClient } from "../../src/lsp-client-methods.js";
 import { createTestServerInstance } from "../helpers/fixtures.js";
+import { createClientWithMock } from "../helpers/create-client-with-mock.js";
 
 describe("LspClient JSON-RPC parsing", () => {
   let server: ReturnType<typeof createTestServerInstance>;
@@ -69,25 +70,81 @@ describe("LspClient JSON-RPC parsing", () => {
     expect(onNotification).toHaveBeenNthCalledWith(2, "method2", {});
   });
 
-  // Skip request/response tests as they require a proper mock process
-  it.skip("should handle response message and resolve pending request", async () => {
-    // Requires full process mock integration
+  it("should handle response message and resolve pending request", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    // Send a request and verify the response resolves
+    const resultPromise = h.client.request("textDocument/hover", { textDocument: { uri: "file:///test.ts" }, position: { line: 0, character: 0 } });
+    const msgs = h.getSentMessages();
+    const req = msgs.find((m) => m.method === "textDocument/hover");
+    expect(req).toBeDefined();
+    expect(req.id).toBeGreaterThan(0);
+
+    // Simulate server response
+    h.sendToClient({ jsonrpc: "2.0", id: req.id, result: { contents: "test hover" } });
+    await expect(resultPromise).resolves.toEqual({ contents: "test hover" });
   });
 
-  it.skip("should handle error response and reject pending request", async () => {
-    // Requires full process mock integration
+  it("should handle error response and reject pending request", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    const resultPromise = h.client.request("textDocument/hover", {});
+    const msgs = h.getSentMessages();
+    const req = msgs.find((m) => m.method === "textDocument/hover");
+
+    // Simulate error response
+    h.sendToClient({ jsonrpc: "2.0", id: req.id, error: { code: -32600, message: "Invalid params" } });
+    await expect(resultPromise).rejects.toThrow("Invalid params");
   });
 
-  it.skip("should send request message with correct format", () => {
-    // Requires proper process mock
+  it("should send request message with correct format", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    h.client.request("textDocument/hover", { textDocument: { uri: "file:///test.ts" }, position: { line: 0, character: 0 } });
+
+    const msgs = h.getSentMessages();
+    const req = msgs.find((m) => m.method === "textDocument/hover");
+    expect(req).toMatchObject({
+      jsonrpc: "2.0",
+      method: "textDocument/hover",
+      params: { textDocument: { uri: "file:///test.ts" }, position: { line: 0, character: 0 } },
+    });
+    expect(req.id).toBeTypeOf("number");
   });
 
-  it.skip("should send notification without id", () => {
-    // Requires proper process mock
+  it("should send notification without id", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    h.client.notify("textDocument/didOpen", { textDocument: { uri: "file:///test.ts" } });
+
+    const msgs = h.getSentMessages();
+    const notif = msgs.find((m) => m.method === "textDocument/didOpen");
+    expect(notif).toMatchObject({
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: { textDocument: { uri: "file:///test.ts" } },
+    });
+    expect(notif.id).toBeUndefined();
   });
 
-  it.skip("should timeout pending requests", async () => {
-    // Requires proper process mock
+  it("should timeout pending requests", async () => {
+    const h = createClientWithMock();
+    h.autoRespond();
+    await h.client.startProcess(h.config);
+
+    // Use a very short timeout
+    const resultPromise = h.client.request("textDocument/hover", {}, 50);
+
+    // Don't send a response — let it timeout
+    await expect(resultPromise).rejects.toThrow("timed out after 50ms");
   });
 
   it("should handle notification with no callback registered", () => {

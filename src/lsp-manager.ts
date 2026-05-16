@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import type { Diagnostic } from "vscode-languageserver-types";
 import type { LspServerConfig, LspServerInstance, LspManagerState } from "./types.js";
-import { LspClient } from "./lsp-client.js";
+import { LspClient } from "./lsp-client-methods.js";
 import { languageFromPath } from "./language-config.js";
 
 // ── Local Types ───────────────────────────────────────────────────────────
@@ -19,12 +19,20 @@ interface DiagnosticPullResult {
   items?: Diagnostic[];
 }
 
+/** Runtime type guard for LSP diagnostic pull results */
+function isDiagnosticPullResult(value: unknown): value is DiagnosticPullResult {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    "kind" in obj &&
+    (obj.kind === "full" || obj.kind === "unchanged")
+  );
+}
+
 /** Interval for checking idle servers (1 minute) */
 const IDLE_CHECK_INTERVAL_MS = 60_000;
 /** How long a server can be idle before being stopped (5 minutes) */
-const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-/** Timeout for individual LSP requests (30 seconds) */
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export class LspManager {
   private state: LspManagerState;
@@ -36,7 +44,6 @@ export class LspManager {
       idleTimeoutMs,
       idleCheckInterval: null,
       cwd,
-      requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
     };
 
     // Start idle checker
@@ -97,9 +104,6 @@ export class LspManager {
       fileVersions: new Map(),
       diagnostics: new Map(),
       rootUri: null,
-      initialized: false,
-      initPromise: null,
-      capabilities: null,
     };
 
     this.state.servers.set(config.language, server);
@@ -121,7 +125,6 @@ export class LspManager {
       server.lastActive = Date.now();
     } catch (err) {
       server.status = "error";
-      server.initPromise = null;
       throw err;
     }
   }
@@ -183,8 +186,8 @@ export class LspManager {
       try {
         // Try pull model first
         const result = await client.requestDiagnostics(uri);
-        if (result && typeof result === "object" && "kind" in result && result.kind === "full") {
-          const diags = (result as DiagnosticPullResult).items ?? [];
+        if (isDiagnosticPullResult(result) && result.kind === "full") {
+          const diags = result.items ?? [];
           server.diagnostics.set(uri, diags);
           return diags;
         }
@@ -288,20 +291,6 @@ export class LspManager {
       result.push({ language: lang, status: server.status, pid: server.pid });
     }
     return result;
-  }
-
-  /** Remove cached data for a file URI */
-  private cleanupFile(uri: string): void {
-    for (const server of this.state.servers.values()) {
-      server.fileVersions.delete(uri);
-      server.diagnostics.delete(uri);
-    }
-  }
-
-  /** Notify that a file has been closed — clean up cached data */
-  fileClosed(filePath: string): void {
-    const uri = pathToFileURL(filePath).href;
-    this.cleanupFile(uri);
   }
 
   /** Get the client map (for direct access by tools) */

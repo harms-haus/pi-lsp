@@ -12,7 +12,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { LspManager } from "./lsp-manager.js";
+import { LspManager, DEFAULT_IDLE_TIMEOUT_MS } from "./lsp-manager.js";
 import { registerDiagnosticsHook } from "./diagnostics.js";
 import { registerDiagnosticsTool } from "./tools/diagnostics.js";
 import { registerFindReferencesTool } from "./tools/find_references.js";
@@ -26,12 +26,20 @@ import { registerFindImplementationsTool } from "./tools/find_implementations.js
 import { registerFindTypeDefinitionTool } from "./tools/find_type_definition.js";
 import { registerFindTypeHierarchyTool } from "./tools/find_type_hierarchy.js";
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+interface SessionContext {
+  cwd: string;
+  hasUI: boolean;
+  ui: {
+    notify(message: string, level: "info" | "warning" | "error" | "success"): void;
+    setStatus(key: string, value: string | undefined): void;
+    confirm(title: string, message: string): Promise<boolean>;
+  };
+}
 
 export default function (pi: ExtensionAPI) {
   let manager: LspManager | null = null;
   let cwd = process.cwd();
-  let currentCtx: any;
+  let currentCtx: SessionContext | undefined;
   let lastLspStatus: string | undefined;
 
   function getManager(): LspManager | null {
@@ -44,7 +52,7 @@ export default function (pi: ExtensionAPI) {
 
   function initManager(): void {
     if (manager) return;
-    manager = new LspManager(cwd, IDLE_TIMEOUT_MS);
+    manager = new LspManager(cwd, DEFAULT_IDLE_TIMEOUT_MS);
   }
 
   // ── Session Lifecycle ──────────────────────────────────────────────────

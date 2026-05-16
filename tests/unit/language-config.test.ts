@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { languageFromPath, getConfigForExtension, isServerInstalled } from "../../src/language-config.js";
+import { languageFromPath, isServerInstalled } from "../../src/language-config.js";
 import { TEST_TS_CONFIG, TEST_PY_CONFIG } from "../helpers/fixtures.js";
 
 // Mock child_process
@@ -138,38 +138,6 @@ describe("languageFromPath", () => {
   });
 });
 
-describe("getConfigForExtension", () => {
-  it("should return TypeScript config for .ts extension", () => {
-    const config = getConfigForExtension(".ts");
-    expect(config).toBeDefined();
-    expect(config!.language).toBe("typescript");
-    expect(config!.command).toBe("typescript-language-server");
-  });
-
-  it("should return Python config for .py extension", () => {
-    const config = getConfigForExtension(".py");
-    expect(config).toBeDefined();
-    expect(config!.language).toBe("python");
-    expect(config!.command).toBe("pylsp");
-  });
-
-  it("should return undefined for unknown extension", () => {
-    expect(getConfigForExtension(".unknown")).toBeUndefined();
-  });
-
-  it("should return config with all required fields", () => {
-    const config = getConfigForExtension(".ts");
-    expect(config).toBeDefined();
-    expect(config!.language).toBeDefined();
-    expect(config!.command).toBeDefined();
-    expect(config!.args).toBeInstanceOf(Array);
-    expect(config!.extensions).toBeInstanceOf(Array);
-    expect(config!.detectCommand).toBeDefined();
-    expect(config!.installCommand).toBeDefined();
-    expect(config!.installInstructions).toBeDefined();
-  });
-});
-
 describe("isServerInstalled", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -223,7 +191,17 @@ describe("isServerInstalled", () => {
     );
   });
 
-  it.skip("should handle timeout gracefully", async () => {
-    // Timeout handling requires async delay, skip for now
+  it("should handle timeout gracefully", async () => {
+    vi.mocked(execFile).mockImplementation((_cmd, _args, options, callback) => {
+      // Simulate timeout by calling back with a timed-out error
+      const cb = (typeof options === 'function' ? options : callback) as (error: Error & { killed?: boolean }, stdout: string, stderr: string) => void;
+      const err = new Error("Command timed out") as Error & { killed?: boolean };
+      err.killed = true;
+      cb(err, "", "");
+      return { kill: vi.fn() } as any;
+    });
+
+    const installed = await isServerInstalled(TEST_TS_CONFIG);
+    expect(installed).toBe(false);
   });
 });

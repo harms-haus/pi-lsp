@@ -45,11 +45,11 @@ Recommended workflow: keep `npm run test:watch` running in one terminal while ed
 
 ## Test Suite
 
-The test suite consists of **113 tests across 16 files**: 106 passed, 7 skipped.
+The test suite consists of **119 tests across 17 files**: 119 passed, 7 skipped.
 
 | Layer | Files | Description |
 |-------|-------|-------------|
-| Unit | 5 | `diagnostics`, `language-config`, `lsp-client`, `lsp-manager`, `shared` |
+| Unit | 6 | `diagnostics`, `language-config`, `lsp-client`, `lsp-manager`, `shared`, `index` |
 | Integration | 11 | One file per LSP tool (diagnostics, find_references, find_definition, find_symbols, find_calls, rename_symbol, find_document_symbols, hover, find_implementations, find_type_definition, find_type_hierarchy) |
 
 ## Project Structure
@@ -61,8 +61,8 @@ pi-lsp/
 ├── tsconfig.json                 # TypeScript compiler configuration
 ├── vitest.config.ts              # Vitest test runner configuration
 ├── eslint.config.mjs             # ESLint flat config (TypeScript-aware)
-├── .gitignore                    # Ignored files (node_modules, .DS_Store, .bifrost.yaml)
-├── .bifrost.yaml                 # Bifrost CI/CD pipeline config
+├── .gitignore                    # Ignored files (node_modules, .DS_Store, dist/, coverage/)
+├── .github/                     # GitHub Actions CI/CD workflows
 ├── README.md                     # User-facing documentation
 │
 ├── src/
@@ -70,7 +70,9 @@ pi-lsp/
 │   ├── types.ts                  # Shared type definitions: LspServerConfig, LspServerInstance, tool params
 │   ├── types-global.d.ts         # Ambient type declarations for runtime dependencies (typebox, pi-coding-agent)
 │   ├── lsp-manager.ts            # Server lifecycle: start/stop, idle timeout, file tracking, status
-│   ├── lsp-client.ts             # JSON-RPC client over stdio — request/response/notification handling
+│   ├── lsp-client.ts             # JSON-RPC base client — process management, message framing
+│   ├── lsp-client-methods.ts     # High-level LSP method wrappers (definition, references, hover, etc.)
+│   ├── lsp-protocol.ts           # JSON-RPC message types and LSP protocol interfaces
 │   ├── language-config.ts        # 33 language server configurations (command, args, install instructions)
 │   ├── diagnostics.ts            # Auto-diagnostics hook triggered on write/edit tool completion
 │   └── tools/
@@ -97,6 +99,7 @@ pi-lsp/
 │   │   ├── diagnostics.test.ts   # Unit tests for diagnostics.ts
 │   │   ├── language-config.test.ts # Unit tests for language-config.ts
 │   │   ├── lsp-client.test.ts    # Unit tests for JSON-RPC client
+│   │   └── index.test.ts         # Unit tests for extension entry point
 │   │   ├── lsp-manager.test.ts   # Unit tests for server manager
 │   │   └── shared.test.ts        # Unit tests for shared utilities
 │   └── integration/
@@ -124,7 +127,7 @@ pi-lsp/
 |--------|-------|---------|
 | `target` | `ES2020` | Emit modern JavaScript features |
 | `module` | `ESNext` | ES module syntax with dynamic imports |
-| `moduleResolution` | `node` | Node.js-style module resolution |
+| `moduleResolution` | `bundler` | Modern module resolution for ESM |
 | `strict` | `true` | Enable all strict type-checking options |
 | `esModuleInterop` | `true` | Compatibility with CommonJS default exports |
 | `skipLibCheck` | `true` | Skip type-checking declaration files (faster) |

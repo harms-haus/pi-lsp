@@ -5,8 +5,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import type { Location } from "vscode-languageserver-types";
 import type { LspManager } from "../lsp-manager.js";
-import type { LspClient } from "../lsp-client.js";
+import type { LspClient } from "../lsp-client-methods.js";
 import type { LspServerConfig } from "../types.js";
 import {
   LANGUAGE_SERVERS,
@@ -33,7 +34,7 @@ export const SYMBOL_KIND_NAMES: Record<number, string> = {
 };
 
 /** Reverse lookup: kind name (lowercase) → SymbolKind number */
-export const SYMBOL_KIND_BY_NAME: Record<string, number> = Object.fromEntries(
+const SYMBOL_KIND_BY_NAME: Record<string, number> = Object.fromEntries(
   Object.entries(SYMBOL_KIND_NAMES).map(([num, name]) => [name.toLowerCase(), Number(num)])
 );
 
@@ -48,7 +49,7 @@ export function parseSymbolKind(kind: string): number | undefined {
 
 // ── UI Interface (for typing the `ui` parameter) ──────────────────────────
 
-export interface ToolUI {
+interface ToolUI {
   confirm(title: string, message: string): Promise<boolean>;
   notify(message: string, level: "info" | "warning" | "error" | "success"): void;
 }
@@ -68,8 +69,14 @@ export function resolveFile(file: string, cwd: string): string {
     try {
       realPath = fs.realpathSync(normalized);
     } catch {
-      // File doesn't exist yet — check the normalized path
-      realPath = normalized;
+      // File doesn't exist — resolve the parent directory instead
+      const parent = path.dirname(normalized);
+      try {
+        const realParent = fs.realpathSync(parent);
+        realPath = path.join(realParent, path.basename(normalized));
+      } catch {
+        throw new Error(`Path traversal: "${file}" resolves outside the workspace.`);
+      }
     }
     if (!realPath.startsWith(realCwd + path.sep) && realPath !== realCwd) {
       throw new Error(`Path traversal: "${file}" resolves outside the workspace.`);
@@ -250,6 +257,89 @@ export function sanitizeError(err: unknown, context: string): string {
     .replace(/\/root\//g, "/")
     .replace(/C:\\\\Users\\[^\\]+/g, "~");
   return `${context}: ${sanitized}`;
+}
+
+// ── Diagnostics Helpers ───────────────────────────────────────────────────
+
+/** Count diagnostics by severity */
+export function countSeverities(diagnostics: { severity?: number }[]): {
+  errors: number;
+  warnings: number;
+  info: number;
+} {
+  let errors = 0;
+  let warnings = 0;
+  let info = 0;
+  for (const d of diagnostics) {
+    if (d.severity === 1) errors++;
+    else if (d.severity === 2) warnings++;
+    else if (d.severity === 3 || d.severity === 4) info++;
+  }
+  return { errors, warnings, info };
+}
+
+/** Format a single diagnostic as `severity: line:col: [source] message (code)` */
+export function formatDiagnosticLine(d: {
+  range: { start: { line: number; character: number } };
+  severity?: number;
+  source?: string;
+  message: string;
+  code?: string | number | { value: string | number };
+}): string {
+  const startLine = d.range.start.line + 1;
+  const startCol = d.range.start.character + 1;
+  const severity = SEVERITY_NAMES[d.severity ?? 0] ?? "?";
+  const source = d.source ? `[${d.source}] ` : "";
+  const codeVal =
+    d.code !== undefined
+      ? typeof d.code === "object"
+        ? ` (${(d.code as { value: string | number }).value})`
+        : ` (${d.code})`
+      : "";
+  return `  ${severity}: ${startLine}:${startCol}: ${source}${d.message}${codeVal}`;
+}
+
+// ── Workspace Boundary Check ───────────────────────────────────────────────
+
+/** Check whether a file path is within the given workspace root */
+export function isWithinWorkspace(filePath: string, workspaceRoot: string): boolean {
+  const normalizedFile = path.normalize(filePath);
+  const normalizedRoot = path.normalize(workspaceRoot);
+  try {
+    const realRoot = fs.realpathSync(workspaceRoot);
+    let realFile: string;
+    try {
+      realFile = fs.realpathSync(normalizedFile);
+    } catch {
+      // File doesn't exist — resolve the parent directory instead
+      const parent = path.dirname(normalizedFile);
+      try {
+        const realParent = fs.realpathSync(parent);
+        realFile = path.join(realParent, path.basename(normalizedFile));
+      } catch {
+        return false;
+      }
+    }
+    return realFile.startsWith(realRoot + path.sep) || realFile === realRoot;
+  } catch {
+    return normalizedFile.startsWith(normalizedRoot + path.sep);
+  }
+}
+
+// ── Location Helpers ───────────────────────────────────────────────────────
+
+/** Normalize LSP Location result (single, array, or null) into a flat array */
+export function flattenLocations(result: Location | Location[] | null): Location[] {
+  if (Array.isArray(result)) return result;
+  if (result && typeof result === "object" && "uri" in result) return [result];
+  return [];
+}
+
+/** Format locations as `filepath:line:col` lines */
+export function formatLocations(locations: Location[]): string {
+  return locations.length > 0
+    ? locations.map((l) => `  ${uriToFilePath(l.uri)}:${l.range.start.line + 1}:${l.range.start.character + 1}`).join("\n")
+    : "(none)";
 }
 
 // ── Text/Diff Utilities ────────────────────────────────────────────────────

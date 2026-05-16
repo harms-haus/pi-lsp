@@ -5,7 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import type { CallHierarchyItem, Range } from "vscode-languageserver-types";
+import type { CallHierarchyIncomingCall, CallHierarchyOutgoingCall } from "vscode-languageserver-types";
 import { executePreamble, toolError, uriToFilePath, sanitizeError } from "./shared.js";
 
 const Schema = Type.Object({
@@ -45,8 +45,8 @@ export function registerFindCallsTool(
         }
 
         const item = items[0];
-        let incomingCalls: any[] = [];
-        let outgoingCalls: any[] = [];
+        let incomingCalls: CallHierarchyIncomingCall[] = [];
+        let outgoingCalls: CallHierarchyOutgoingCall[] = [];
 
         try {
           const incoming = await client.incomingCalls(item);
@@ -59,10 +59,9 @@ export function registerFindCallsTool(
         } catch { /* not supported */ }
 
         const formatCall = (
-          call: { from: CallHierarchyItem; to: CallHierarchyItem; fromRanges?: Range[] },
-          direction: "from" | "to",
+          call: CallHierarchyIncomingCall | CallHierarchyOutgoingCall,
         ) => {
-          const node = call[direction];
+          const node = "from" in call ? call.from : call.to;
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP call hierarchy item is loosely typed, need runtime checks
           const name = node.name ?? "(unknown)";
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP call hierarchy item is loosely typed, need runtime checks
@@ -70,7 +69,7 @@ export function registerFindCallsTool(
           const fp = uriToFilePath(uri);
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- LSP call hierarchy item is loosely typed, need runtime checks
           const line = node.range?.start?.line ? node.range.start.line + 1 : "?";
-          const ranges = (call.fromRanges ?? []).map((r) => `    at line ${r.start.line + 1}`).join("\n");
+          const ranges = ((call.fromRanges as (typeof call.fromRanges) | undefined) ?? []).map((r) => `    at line ${r.start.line + 1}`).join("\n");
           return `  ${name} — ${fp}:${line}\n${ranges}`;
         };
 
@@ -78,12 +77,12 @@ export function registerFindCallsTool(
 
         if (incomingCalls.length > 0) {
           output += `\n─── Incoming Calls (${incomingCalls.length}) ───\n`;
-          output += incomingCalls.map((c) => formatCall(c, "from")).join("\n\n");
+          output += incomingCalls.map((c) => formatCall(c)).join("\n\n");
         }
 
         if (outgoingCalls.length > 0) {
           output += `\n─── Outgoing Calls (${outgoingCalls.length}) ───\n`;
-          output += outgoingCalls.map((c) => formatCall(c, "to")).join("\n\n");
+          output += outgoingCalls.map((c) => formatCall(c)).join("\n\n");
         }
 
         if (incomingCalls.length === 0 && outgoingCalls.length === 0) {

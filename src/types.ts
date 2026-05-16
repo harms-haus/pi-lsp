@@ -48,12 +48,6 @@ export interface LspServerInstance {
   diagnostics: Map<string, Diagnostic[]>;
   /** Root URI for this server instance */
   rootUri: string | null;
-  /** Whether initialize has completed */
-  initialized: boolean;
-  /** Promise that resolves when initialization completes */
-  initPromise: Promise<void> | null;
-  /** Server capabilities after initialize */
-  capabilities: Record<string, unknown> | null;
 }
 
 // ── Manager State ───────────────────────────────────────────────────────────
@@ -67,84 +61,6 @@ export interface LspManagerState {
   idleCheckInterval: NodeJS.Timeout | null;
   /** Current working directory */
   cwd: string;
-  /** Request timeout in ms */
-  requestTimeoutMs: number;
 }
 
-// ── Tool Parameters (exported for use in extension) ─────────────────────────
 
-export interface LspDiagnosticsParams {
-  file?: string;
-  workspace?: boolean;
-  refresh?: boolean;
-}
-
-export interface LspFindReferencesParams {
-  file: string;
-  line: number;
-  column: number;
-}
-
-export interface LspRefactorSymbolParams {
-  file: string;
-  line: number;
-  column: number;
-  newName: string;
-}
-
-export interface LspGotoDefinitionParams {
-  file: string;
-  line: number;
-  column: number;
-}
-
-export interface LspFindSymbolParams {
-  query: string;
-  kind?: string;
-}
-
-export interface LspCallHierarchyParams {
-  file: string;
-  line: number;
-  column: number;
-}
-
-// ── New Tool Parameter Interfaces ──────────────────────────────────────────
-
-export interface FindDocumentSymbolsParams {
-  file: string;
-}
-
-export interface HoverParams {
-  file: string;
-  line: number;
-  column: number;
-}
-
-export interface FindImplementationsParams {
-  file: string;
-  line: number;
-  column: number;
-}
-
-export interface FindTypeDefinitionParams {
-  file: string;
-  line: number;
-  column: number;
-}
-
-export interface FindTypeHierarchyParams {
-  file: string;
-  line: number;
-  column: number;
-  direction: "supertypes" | "subtypes";
-  depth: number;
-}
-
-// ── Backward-compatible type aliases (preferred names for new tools) ────────
-
-export type FindReferencesParams = LspFindReferencesParams;
-export type RenameSymbolParams = LspRefactorSymbolParams;
-export type FindDefinitionParams = LspGotoDefinitionParams;
-export type FindSymbolsParams = LspFindSymbolParams;
-export type FindCallsParams = LspCallHierarchyParams;

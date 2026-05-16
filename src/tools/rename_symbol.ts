@@ -5,8 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { LspManager } from "../lsp-manager.js";
-import type { TextDocumentEdit, TextEdit } from "vscode-languageserver-types";
-import * as path from "node:path";
+import type { TextDocumentEdit, TextEdit, Range } from "vscode-languageserver-types";
 import * as fs from "node:fs";
 import {
   executePreamble,
@@ -15,6 +14,7 @@ import {
   applyEdits,
   buildDiff,
   sanitizeError,
+  isWithinWorkspace,
 } from "./shared.js";
 
 const Schema = Type.Object({
@@ -46,29 +46,18 @@ export function registerRenameSymbolTool(
       const { client, uri, filePath } = preamble.ok;
       const cwd = getCwd();
 
-      function isWithinWorkspace(file: string, workspaceRoot: string): boolean {
-        const normalized = path.normalize(file);
-        try {
-          const realRoot = fs.realpathSync(workspaceRoot);
-          const realFile = fs.realpathSync(normalized);
-          return realFile.startsWith(realRoot + path.sep) || realFile === realRoot;
-        } catch {
-          return normalized.startsWith(path.normalize(workspaceRoot) + path.sep);
-        }
-      }
-
       try {
         // Try to get the current symbol name
         let oldName = "(unknown)";
-        let renameRange: { start: { line: number; character: number }; end: { line: number; character: number } } | null = null;
+        let renameRange: Range | null = null;
         try {
           const prepareResult = await client.prepareRename(uri, params.line - 1, params.column - 1);
           if (prepareResult && typeof prepareResult === "object") {
             if ("placeholder" in prepareResult) {
               oldName = prepareResult.placeholder;
-              renameRange = prepareResult.range;
+              renameRange = (prepareResult as { range: Range; placeholder: string }).range;
             } else if ("start" in prepareResult && "end" in prepareResult) {
-              renameRange = prepareResult;
+              renameRange = prepareResult as Range;
             }
           }
         } catch {
